@@ -104,6 +104,15 @@ Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
 error tracking, tracing, and logs — see `src/observability/sentry.ts`. The
 app runs fine with it unset; Sentry calls become no-ops.
 
+In production the DSN comes from Terraform: pass `-var="sentry_dsn=..."` (or
+set it in a gitignored `*.auto.tfvars`) on `apply`. Without it the Container
+App has no `SENTRY_DSN` and **nothing is reported**.
+
+What is reported: 5xx errors (with route/method), config reload and
+state-service failures, startup crashes, and every `request.log`/`app.log`
+line (as Sentry Logs, via `pinoIntegration`), including state changes and
+rejected writes.
+
 ## CI/CD
 
 `.github/workflows/ci.yml` typechecks, builds, runs unit + integration tests
