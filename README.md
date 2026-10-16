@@ -70,6 +70,13 @@ for f in spaceapi.json api-keys.yaml legacy.yaml; do
 done
 ```
 
+To change a live config safely (pull, edit, validate, review diff, confirm, push):
+
+```sh
+export SPACESTATE_STORAGE_ACCOUNT=<storage_account_name output>
+npm run edit-config -- spaceapi   # or api-keys | legacy; --dry-run to skip the push
+```
+
 Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
 `API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).
 
