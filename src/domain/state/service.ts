@@ -71,14 +71,23 @@ export class StateService {
     try {
       await this.currentStateStore.set(snapshot);
     } catch (err) {
-      // Not fatal: getCurrentState() falls back to scanning history when
-      // this pointer is missing/stale. Surface it so it gets noticed and
-      // fixed, without failing the request that already recorded history.
+      // Not fatal: the history write already succeeded. But a failed `set`
+      // can leave a *stale* pointer behind (if one existed from a previous
+      // write) rather than a missing one, and getCurrentState() only falls
+      // back to history when the pointer is missing — so a stale row would
+      // otherwise keep being served as-is, forever. Clear it (best-effort)
+      // so that fallback path actually applies on the next read.
       Sentry.logger.warn(
-        "Failed to update the CurrentState pointer after a successful history write; reads will fall back to a history scan until this recovers",
+        "Failed to update the CurrentState pointer after a successful history write; clearing it so reads fall back to a history scan",
         { error: err instanceof Error ? err.message : String(err) },
       );
       Sentry.captureException(err);
+
+      try {
+        await this.currentStateStore.clear();
+      } catch (clearErr) {
+        Sentry.captureException(clearErr);
+      }
     }
 
     return { snapshot, changed: true };

@@ -5,13 +5,22 @@ import type { CurrentStateSnapshot, CurrentStateStore } from "../../src/domain/s
 
 class FakeCurrentStateStore implements CurrentStateStore {
   snapshot: CurrentStateSnapshot | undefined;
+  failNextSet = false;
 
   async get(): Promise<CurrentStateSnapshot | undefined> {
     return this.snapshot;
   }
 
   async set(snapshot: CurrentStateSnapshot): Promise<void> {
+    if (this.failNextSet) {
+      this.failNextSet = false;
+      throw new Error("simulated transient failure");
+    }
     this.snapshot = snapshot;
+  }
+
+  async clear(): Promise<void> {
+    this.snapshot = undefined;
   }
 }
 
@@ -69,5 +78,26 @@ describe("StateService", () => {
 
     const service = new StateService(currentStateStore, historyStore);
     expect((await service.getCurrentState()).state).toBe("open");
+  });
+
+  it("doesn't keep serving a stale pointer after a failed set() clears it (sentry[bot] finding)", async () => {
+    const currentStateStore = new FakeCurrentStateStore();
+    const historyStore = new FakeHistoryStore();
+    const service = new StateService(currentStateStore, historyStore);
+
+    // Establish a pointer that will go stale: it currently says "open".
+    await service.changeState({ state: "open", user: "alice", method: "api", source: "api" });
+    expect((await service.getCurrentState()).state).toBe("open");
+
+    // History records "closed" correctly, but the pointer write fails —
+    // leaving the "open" row in place rather than missing. Without the fix,
+    // getCurrentState() would keep returning "open" forever.
+    currentStateStore.failNextSet = true;
+    const result = await service.changeState({ state: "closed", user: "bob", method: "api", source: "api" });
+    expect(result.changed).toBe(true);
+    expect(result.snapshot.state).toBe("closed");
+
+    expect(currentStateStore.snapshot).toBeUndefined();
+    expect((await service.getCurrentState()).state).toBe("closed");
   });
 });

@@ -46,4 +46,15 @@ export class TableCurrentStateStore implements CurrentStateStore {
       );
     });
   }
+
+  async clear(): Promise<void> {
+    await Sentry.startSpan({ name: "CurrentState.clear", op: "db.table.delete" }, async () => {
+      try {
+        await this.client.deleteEntity(PARTITION_KEY, ROW_KEY);
+      } catch (err) {
+        if (isRestError(err) && err.statusCode === 404) return;
+        throw err;
+      }
+    });
+  }
 }
