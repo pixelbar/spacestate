@@ -15,5 +15,6 @@ resource "azurerm_container_app_environment" "spacestate" {
   name                       = "${var.resource_group_name}-env"
   resource_group_name        = azurerm_resource_group.spacestate.name
   location                   = azurerm_resource_group.spacestate.location
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.spacestate.id
 }
