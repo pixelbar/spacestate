@@ -1,5 +1,5 @@
 import type { FastifyRequest } from "fastify";
-import type { SpaceConfig } from "../config/schema.js";
+import type { ApiKeysConfig } from "../config/schema.js";
 import { constantTimeEquals } from "./timingSafeCompare.js";
 
 export type ApiKeyRole = "read" | "write";
@@ -11,7 +11,7 @@ export interface AuthorizedKey {
 
 const BEARER_PREFIX = "Bearer ";
 
-export function resolveApiKey(config: SpaceConfig, request: FastifyRequest): AuthorizedKey | undefined {
+export function resolveApiKey(config: ApiKeysConfig, request: FastifyRequest): AuthorizedKey | undefined {
   const header = request.headers.authorization;
   if (!header?.startsWith(BEARER_PREFIX)) return undefined;
 

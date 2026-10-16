@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildTestApp } from "../helpers/buildTestApp.js";
 
-// Matches config/space.sample.yaml.
+// Matches config/*.sample.* files.
 const READ_KEY = "dev-read-key-0000000000";
 const WRITE_KEY = "dev-write-key-0000000000";
 

@@ -10,13 +10,13 @@ import type { LegacyPluginOptions } from "../plugin.js";
  */
 export const legacySpaceApiRoute: FastifyPluginAsync<LegacyPluginOptions> = async (
   fastify,
-  { stateService, configStore },
+  { stateService, spaceApiStore },
 ) => {
   const handler = async (_request: FastifyRequest, reply: FastifyReply) => {
     reply.header("Access-Control-Allow-Origin", "*");
     reply.header("Cache-Control", "no-cache");
     const snapshot = await stateService.getCurrentState();
-    return buildSpaceApiDocument(configStore.get(), snapshot);
+    return buildSpaceApiDocument(spaceApiStore.get(), snapshot);
   };
 
   fastify.get("/index.php", handler);

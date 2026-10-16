@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- Split config into three sources: a SpaceAPI JSON document matching the public one exactly, API keys, and legacy devices. `CONFIG_SOURCE` is replaced by `SPACEAPI_CONFIG_SOURCE`, `API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE`.
+- SpaceAPI output no longer includes `state.lastchange`, matching the existing public document.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added

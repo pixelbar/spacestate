@@ -17,7 +17,7 @@ Requires Docker (for Azurite, the local Table Storage emulator) and Node 22+.
 ```sh
 npm install
 docker compose up -d azurite
-npm run dev          # http://localhost:3000, config from config/space.sample.yaml
+npm run dev          # http://localhost:3000, config from config/*.sample.*
 ```
 
 Or run the whole thing containerized: `docker compose up --build`.
@@ -48,21 +48,32 @@ State is local (`terraform.tfstate`) for now — move to a remote backend
 (e.g. a blob container in the storage account this config creates) once
 more than one person needs to run `apply`.
 
-The app reads its config (space metadata, API keys, legacy device
-credentials) from a YAML blob rather than a database — see
-`config/space.sample.yaml` for the shape. After the first `apply`, upload
-a real one:
+The app reads its config from three blobs rather than a database, each
+with a sample under `config/`:
+
+- `spaceapi.json` — the public SpaceAPI document, exactly as served, minus
+  the live fields (`open`, `state.open`), which come from current state
+  (`config/spaceapi.sample.json`)
+- `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
+- `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
+
+After the first `apply`, upload real ones:
 
 ```sh
-az storage blob upload \
-  --account-name <storage_account_name output> \
-  --container-name config \
-  --name space.yaml \
-  --file ./space.yaml \
-  --auth-mode login
+for f in spaceapi.json api-keys.yaml legacy.yaml; do
+  az storage blob upload \
+    --account-name <storage_account_name output> \
+    --container-name config \
+    --name "$f" \
+    --file "./$f" \
+    --auth-mode login
+done
 ```
 
-Editing that blob later takes effect on the next cold start (or within a
+Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
+`API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).
+
+Editing those blobs later takes effect on the next cold start (or within a
 few minutes if a replica is already running — see `src/config/loader.ts`),
 no redeploy needed.
 

@@ -1,42 +1,32 @@
 import { z } from "zod";
 
-const keymasterSchema = z.object({
-  name: z.string(),
-  irc_nick: z.string().optional(),
-  twitter: z.string().optional(),
-  email: z.string().optional(),
-});
+const iconSchema = z.object({ open: z.string(), closed: z.string() });
 
-const spaceMetadataSchema = z.object({
-  name: z.string(),
-  logo: z.string(),
-  url: z.string(),
-  address: z.string(),
-  location: z.object({
-    lon: z.number(),
-    lat: z.number(),
-  }),
-  contact: z.object({
-    email: z.string(),
-    irc: z.string().optional(),
-    discord: z.string().optional(),
-    twitter: z.string().optional(),
-    mastodon: z.string().optional(),
-    ml: z.string().optional(),
-  }),
-  github: z.string().optional(),
-  keymasters: z.array(keymasterSchema).default([]),
-  // Whether this space participates in SpaceFed federation schemes. Real,
-  // space-specific facts (e.g. Pixelbar's spacenet membership) — not a
-  // feature flag with a safe universal default, so there's no default here.
-  spacefed: z
-    .object({
-      spacenet: z.boolean().default(false),
-      spacesaml: z.boolean().default(false),
-      spacephone: z.boolean().default(false),
-    })
-    .default({ spacenet: false, spacesaml: false, spacephone: false }),
-});
+/**
+ * The static part of the public SpaceAPI document — exactly the JSON served
+ * at spaceapi.pixelbar.nl minus the dynamic fields (`open`, `state.open`,
+ * `state.lastchange`), which the builder fills in from live state.
+ * Unknown keys are preserved so new SpaceAPI fields only need a config edit.
+ */
+export const spaceApiConfigSchema = z
+  .object({
+    api: z.string(),
+    space: z.string(),
+    logo: z.string(),
+    url: z.string(),
+    location: z.object({ address: z.string(), lon: z.number(), lat: z.number() }).passthrough(),
+    contact: z.object({ email: z.string() }).passthrough(),
+    spacefed: z.object({
+      spacenet: z.boolean(),
+      spacesaml: z.boolean(),
+      spacephone: z.boolean(),
+    }),
+    icon: iconSchema,
+    state: z.object({ icon: iconSchema }).passthrough(),
+    issue_report_channels: z.array(z.string()),
+    projects: z.array(z.string()),
+  })
+  .passthrough();
 
 const apiKeyEntrySchema = z.object({
   id: z.string(),
@@ -51,13 +41,16 @@ const legacyDeviceSchema = z.object({
   token: z.string().min(1),
 });
 
-export const spaceConfigSchema = z.object({
-  space: spaceMetadataSchema,
+export const apiKeysConfigSchema = z.object({
   apiKeys: z.array(apiKeyEntrySchema).default([]),
+});
+
+export const legacyConfigSchema = z.object({
   legacyDevices: z.array(legacyDeviceSchema).default([]),
 });
 
-export type SpaceConfig = z.infer<typeof spaceConfigSchema>;
-export type Keymaster = z.infer<typeof keymasterSchema>;
+export type SpaceApiConfig = z.infer<typeof spaceApiConfigSchema>;
+export type ApiKeysConfig = z.infer<typeof apiKeysConfigSchema>;
+export type LegacyConfig = z.infer<typeof legacyConfigSchema>;
 export type ApiKeyEntry = z.infer<typeof apiKeyEntrySchema>;
 export type LegacyDevice = z.infer<typeof legacyDeviceSchema>;

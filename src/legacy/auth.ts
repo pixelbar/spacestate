@@ -1,6 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { findLegacyDevice, resolveClientIp } from "../auth/legacyToken.js";
-import type { LegacyDevice, SpaceConfig } from "../config/schema.js";
+import type { LegacyConfig, LegacyDevice } from "../config/schema.js";
 
 export interface LegacyAuthResult {
   device: LegacyDevice;
@@ -8,7 +8,7 @@ export interface LegacyAuthResult {
 
 /** Thin wrapper over auth/legacyToken.ts — isolated here so nothing else in legacy/ touches auth internals directly. */
 export function authenticateLegacyRequest(
-  config: SpaceConfig,
+  config: LegacyConfig,
   request: FastifyRequest,
   token: string,
 ): LegacyAuthResult | undefined {

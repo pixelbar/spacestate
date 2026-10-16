@@ -1,12 +1,14 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConfigStore } from "../config/loader.js";
+import type { LegacyConfig, SpaceApiConfig } from "../config/schema.js";
 import type { StateService } from "../domain/state/service.js";
 import { legacySpaceApiRoute } from "./routes/spaceapi.js";
 import { spacestateRoute } from "./routes/spacestate.js";
 import { togglestateRoutes } from "./routes/togglestate.js";
 
 export interface LegacyPluginOptions {
-  configStore: ConfigStore;
+  spaceApiStore: ConfigStore<SpaceApiConfig>;
+  legacyStore: ConfigStore<LegacyConfig>;
   stateService: StateService;
 }
 

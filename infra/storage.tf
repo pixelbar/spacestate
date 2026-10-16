@@ -1,7 +1,7 @@
 # Cheapest redundancy tier (LRS) — acceptable for a hobby-space workload at
 # this volume. Two tables for history (see src/storage): an append-only log
 # and a singleton "current state" pointer. The config container holds the
-# space.yaml blob; its *contents* are managed out-of-band (az storage blob
+# config blobs; its *contents* are managed out-of-band (az storage blob
 # upload), not by Terraform, so editing config never needs a plan/apply.
 resource "azurerm_storage_account" "spacestate" {
   name                     = replace("${var.resource_group_name}st", "-", "")
