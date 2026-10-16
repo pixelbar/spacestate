@@ -157,22 +157,24 @@ jobs:
             exit 1
           fi
 
-      - name: Make GHCR package public (no secrets in the image)
+      # GitHub has no REST endpoint to change a package's visibility, so this
+      # can't be automated. Azure pulls anonymously (infra/container_app.tf has
+      # no registry block), so fail here, before deploy, if the package is private.
+      - name: Check the image can be pulled anonymously
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.bump.outputs.sha }}
         run: |
-          # Azure Container Apps pulls the image anonymously (infra/container_app.tf
-          # has no registry block), so the package must be public. The default
-          # token may lack package-admin; then flip it once in the GitHub UI.
-          package="/orgs/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name }}"
-          for attempt in 1 2 3; do
-            if gh api --method PATCH -H "Accept: application/vnd.github+json" \
-              "${package}" -f visibility=public; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::Could not set ghcr.io/${{ github.repository }} public. A maintainer must: GitHub → Packages → spacestate → Package settings → Change visibility → Public."
+          set -euo pipefail
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:${REPO}:pull" | jq -r .token)"
+          status="$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${token}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/${REPO}/manifests/${SHA}")"
+          if [ "${status}" != "200" ]; then
+            echo "::error::Anonymous pull of ghcr.io/${REPO}:${SHA} returned ${status}. Make the package public once: GitHub → Packages → spacestate → Package settings → Change visibility → Public. Then re-run this workflow."
+            exit 1
+          fi
 
   deploy:
     name: Deploy to Azure

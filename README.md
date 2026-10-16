@@ -119,3 +119,8 @@ gh variable set AZURE_SUBSCRIPTION_ID --body "$SUB"
 
 Then in GitHub → Settings → Environments, create `prod` and add required
 reviewers.
+
+After the first release publishes the image, make the GHCR package public once
+(Packages → spacestate → Package settings → Change visibility). GitHub has no
+API for this; Azure pulls anonymously, and the release fails before deploying
+if the package is still private.
