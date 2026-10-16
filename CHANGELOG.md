@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Table Storage clients in production used a URL that included the table name, so every state read/write failed with 501 NotImplemented.
+- `just push`/`pull`/`edit` handle a config blob that does not exist on the remote yet.
+
 ## [0.3.0] - 2026-10-16
 
 ### Added
