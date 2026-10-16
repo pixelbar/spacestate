@@ -8,7 +8,7 @@
  * Needs the Azure CLI (`az login`). The account defaults to $SPACESTATE_STORAGE_ACCOUNT.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -60,7 +60,15 @@ async function run(args: Args): Promise<void> {
     const target = `${account}/${args.container}/${blob}`;
 
     process.stdout.write(`\n== ${blob} ==\n`);
-    az(["storage", "blob", "download", ...blobArgs, "--file", remote, "--no-progress", "--output", "none"]);
+    const exists = download(blobArgs, remote);
+    if (!exists) {
+      if (args.mode === "pull") {
+        process.stdout.write("Not on the remote yet; nothing to pull.\n");
+        continue;
+      }
+      process.stdout.write("Not on the remote yet; this will create it.\n");
+      writeFileSync(remote, "");
+    }
 
     if (args.mode === "pull") {
       if (existsSync(local)) {
@@ -79,7 +87,9 @@ async function run(args: Args): Promise<void> {
     let source = local;
     if (args.mode === "edit") {
       source = join(dir, blob);
-      copyFileSync(remote, source);
+      if (exists) copyFileSync(remote, source);
+      else if (existsSync(local)) copyFileSync(local, source);
+      else throw new Error(`${blob} is not on the remote and ${local} does not exist; create ${local} first.`);
       await editUntilValid(source, schema);
     } else {
       if (!existsSync(local)) throw new Error(`${local} not found; run \`just pull ${name}\` first.`);
@@ -146,6 +156,21 @@ async function confirm(question: string): Promise<boolean> {
   } finally {
     rl.close();
   }
+}
+
+/** Downloads the blob to `file`; returns false if it doesn't exist remotely. */
+function download(blobArgs: readonly string[], file: string): boolean {
+  const result = spawnSync(
+    "az",
+    ["storage", "blob", "download", ...blobArgs, "--file", file, "--no-progress", "--output", "none"],
+    { encoding: "utf8" },
+  );
+  // Spawn failure (e.g. `az` not installed): stderr is null and `error` says why.
+  if (result.error) throw new Error(`Could not run az: ${result.error.message}`);
+  if (result.status === 0) return true;
+  const stderr = result.stderr ?? "";
+  if (stderr.includes("BlobNotFound")) return false;
+  throw new Error(stderr.trim() || "az storage blob download failed.");
 }
 
 function az(args: readonly string[]): void {

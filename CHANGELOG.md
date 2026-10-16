@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Logs are stored in Sentry: `pinoIntegration` forwards Fastify's request/app logs to Sentry Logs. State changes, rejected writes (API and legacy) and startup are logged, and Sentry is flushed on shutdown.
 - 5xx errors are now reported to Sentry explicitly from the error handler, with route and method. Startup failures are reported before the process exits.
+### Fixed
+
+- Table Storage clients in production used a URL that included the table name, so every state read/write failed with 501 NotImplemented.
+- `just push`/`pull`/`edit` handle a config blob that does not exist on the remote yet.
 
 ## [0.3.0] - 2026-10-16
 

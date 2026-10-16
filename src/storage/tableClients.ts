@@ -35,9 +35,12 @@ export function createTableClients(): TableClients {
   }
 
   const credential = new DefaultAzureCredential();
-  const tableUrl = (table: string) => `https://${accountName}.table.core.windows.net/${table}`;
+  // The SDK appends the table name itself: the URL must be the service
+  // endpoint only, or requests hit /<table>/<table>(...) and Azure answers
+  // 501 NotImplemented.
+  const serviceUrl = `https://${accountName}.table.core.windows.net`;
   return {
-    stateHistory: new TableClient(tableUrl(STATE_HISTORY_TABLE), STATE_HISTORY_TABLE, credential),
-    currentState: new TableClient(tableUrl(CURRENT_STATE_TABLE), CURRENT_STATE_TABLE, credential),
+    stateHistory: new TableClient(serviceUrl, STATE_HISTORY_TABLE, credential),
+    currentState: new TableClient(serviceUrl, CURRENT_STATE_TABLE, credential),
   };
 }
