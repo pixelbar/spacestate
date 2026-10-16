@@ -86,4 +86,32 @@ describe("legacy adapter", () => {
 
     expect(response.body).toBe("SUCCESS");
   });
+
+  it("accepts POST with params in the query string and ignores the body, like the PHP's $_GET", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/togglestate.php?token=${DEVICE_TOKEN}&user=Pixelbar&state=open`,
+      remoteAddress: DEVICE_IP,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "token=ignored&user=ignored&state=closed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe("SUCCESS");
+    const state = await app.inject({ method: "GET", url: "/spacestate.php" });
+    expect(state.json()).toEqual({ state: "open" });
+  });
+
+  it("POST with no query params redirects even if the body carries them", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/togglebaker.php",
+      remoteAddress: DEVICE_IP,
+      headers: { "content-type": "application/json" },
+      payload: "{not json",
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("https://www.pixelbar.nl/");
+  });
 });

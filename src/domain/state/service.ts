@@ -17,14 +17,32 @@ export class StateService {
   ) {}
 
   async getCurrentState(): Promise<CurrentStateSnapshot> {
+    try {
+      return await this.resolveCurrentState();
+    } catch (err) {
+      Sentry.logger.error("StateService.getCurrentState failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      Sentry.captureException(err, { tags: { fn: "StateService.getCurrentState" } });
+      throw err;
+    }
+  }
+
+  private async resolveCurrentState(): Promise<CurrentStateSnapshot> {
     const snapshot = await this.currentStateStore.get();
-    if (snapshot) return snapshot;
+    if (snapshot) {
+      Sentry.logger.debug("StateService.getCurrentState: served from pointer", { state: snapshot.state });
+      return snapshot;
+    }
 
     // The CurrentState pointer can lag a successful history write (no
     // cross-table transaction, see changeState below). Reconstruct from the
     // most recent history entry instead of assuming a default.
     const mostRecent = await this.historyStore.mostRecent();
     if (mostRecent) {
+      Sentry.logger.info("StateService.getCurrentState: pointer missing, rebuilt from history", {
+        state: mostRecent.state,
+      });
       return {
         state: mostRecent.state,
         changedAt: mostRecent.changedAt,
@@ -34,6 +52,9 @@ export class StateService {
       };
     }
 
+    Sentry.logger.info("StateService.getCurrentState: no state recorded, using default", {
+      state: DEFAULT_STATE,
+    });
     return {
       state: DEFAULT_STATE,
       changedAt: new Date(0).toISOString(),
@@ -44,6 +65,26 @@ export class StateService {
   }
 
   async changeState(input: StateChangeInput): Promise<StateChangeResult> {
+    try {
+      const result = await this.applyStateChange(input);
+      Sentry.logger.info(
+        result.changed ? "StateService.changeState: state changed" : "StateService.changeState: no-op, already in state",
+        { state: input.state, user: input.user, source: input.source, changed: result.changed },
+      );
+      return result;
+    } catch (err) {
+      Sentry.logger.error("StateService.changeState failed", {
+        state: input.state,
+        user: input.user,
+        source: input.source,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      Sentry.captureException(err, { tags: { fn: "StateService.changeState" } });
+      throw err;
+    }
+  }
+
+  private async applyStateChange(input: StateChangeInput): Promise<StateChangeResult> {
     const current = await this.getCurrentState();
     if (current.state === input.state) {
       return { snapshot: current, changed: false };

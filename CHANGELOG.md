@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- `/togglestate.php` and `/togglebaker.php` accept POST as well as GET (previously 404). As in the legacy PHP (`$_GET`), parameters are read from the query string only and the body is ignored.
+- Sentry logs and exception capture on the success and failure paths of the legacy toggle handler, legacy auth, and `StateService.getCurrentState`/`changeState`.
 - Logs are stored in Sentry: `pinoIntegration` forwards Fastify's request/app logs to Sentry Logs. State changes, rejected writes (API and legacy) and startup are logged, and Sentry is flushed on shutdown.
 - 5xx errors are now reported to Sentry explicitly from the error handler, with route and method. Startup failures are reported before the process exits.
 ### Fixed
