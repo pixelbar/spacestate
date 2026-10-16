@@ -20,8 +20,9 @@ const toggleQuerySchema = z.object({
  *
  * Every outcome is logged to Sentry Logs under the `legacy.togglestate`
  * prefix with structured attributes (never the token). Unexpected failures
- * are also captured as exceptions and rethrown so the shared error handler
- * shapes the response.
+ * are logged and rethrown; the shared error handler captures the exception
+ * (once — Sentry dedupes the same error object, so capturing in several
+ * layers would drop the outer route context) and shapes the response.
  */
 export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async (
   fastify,
@@ -88,7 +89,6 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
         ...base,
         error: err instanceof Error ? err.message : String(err),
       });
-      Sentry.captureException(err, { tags: { route, handler: "legacy.togglestate" } });
       throw err;
     }
   };

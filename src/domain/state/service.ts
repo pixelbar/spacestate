@@ -23,7 +23,6 @@ export class StateService {
       Sentry.logger.error("StateService.getCurrentState failed", {
         error: err instanceof Error ? err.message : String(err),
       });
-      Sentry.captureException(err, { tags: { fn: "StateService.getCurrentState" } });
       throw err;
     }
   }
@@ -79,7 +78,6 @@ export class StateService {
         source: input.source,
         error: err instanceof Error ? err.message : String(err),
       });
-      Sentry.captureException(err, { tags: { fn: "StateService.changeState" } });
       throw err;
     }
   }
