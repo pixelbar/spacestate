@@ -71,3 +71,56 @@ no redeploy needed.
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
 error tracking, tracing, and logs — see `src/observability/sentry.ts`. The
 app runs fine with it unset; Sentry calls become no-ops.
+
+## CI/CD
+
+`.github/workflows/ci.yml` typechecks, builds, runs unit + integration tests
+(against Azurite), builds the Docker image, and on PRs requires a
+`CHANGELOG.md` entry under `## [Unreleased]` (label a PR `skip-changelog`
+for pure chores).
+
+Releases are cut from `main` via Actions → Release → Run workflow. It turns
+`[Unreleased]` into a dated version (`Added` → minor, anything else → patch,
+never 1.0 automatically), bumps `package.json`/`package-lock.json`, commits
+`Release vX.Y.Z`, tags it, opens a GitHub Release, and pushes
+`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. A final `deploy` job
+then waits for approval of the GitHub Environment `prod`, rolls the Container
+App to the `<sha>` image with `az containerapp update`, and waits for
+`/healthz`. Terraform ignores the image (`lifecycle.ignore_changes`), so
+`terraform apply` never rolls prod back; it only manages infrastructure.
+The bot pushes to `main`, so if branch protection is on, allow
+`github-actions[bot]` to bypass it.
+
+### One-time deploy setup
+
+```sh
+SUB=$(az account show --query id -o tsv)
+TENANT=$(az account show --query tenantId -o tsv)
+
+# Identity GitHub logs in as (no client secret; OIDC only)
+APP_ID=$(az ad app create --display-name spacestate-github-deploy --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "github-prod",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:pixelbar/spacestate:environment:prod",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# Allowed to update the app, scoped to its resource group only
+az role assignment create --assignee "$APP_ID" --role Contributor \
+  --scope "/subscriptions/$SUB/resourceGroups/pixelbar-spacestate"
+
+# GitHub: repo variables + the approval-gated environment
+gh variable set AZURE_CLIENT_ID --body "$APP_ID"
+gh variable set AZURE_TENANT_ID --body "$TENANT"
+gh variable set AZURE_SUBSCRIPTION_ID --body "$SUB"
+```
+
+Then in GitHub → Settings → Environments, create `prod` and add required
+reviewers.
+
+After the first release publishes the image, make the GHCR package public once
+(Packages → spacestate → Package settings → Change visibility). GitHub has no
+API for this; Azure pulls anonymously, and the release fails before deploying
+if the package is still private.
