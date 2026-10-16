@@ -1,0 +1,371 @@
+openapi: 3.1.0
+info:
+  title: Pixelbar spacestate API
+  version: 0.4.1
+  description: |
+    SpaceAPI document and open/closed state for Pixelbar.
+
+    The `/api/v1` endpoints are the supported API. The **legacy** endpoints
+    (`/`, `/index.php`, `/spacestate.php`, `/togglestate.php`, `/togglebaker.php`)
+    are a temporary compatibility shim for hardware and consumers that have not
+    migrated; do not build new integrations on them.
+
+    ## Authentication
+
+    | Endpoint | Auth |
+    | --- | --- |
+    | `GET /api/v1/state`, `GET /api/v1/spaceapi`, `/healthz`, legacy reads | None (public) |
+    | `GET /api/v1/history` | Bearer API key, `read` or `write` role |
+    | `POST /api/v1/state` | Bearer API key, `write` role |
+    | legacy `togglestate.php` / `togglebaker.php` | Per-device `token` query parameter **and** a matching client IP |
+
+    API keys are issued in `api-keys.yaml` and sent as
+    `Authorization: Bearer <key>`. A missing, unknown or under-privileged key
+    gets `401 {"error":"unauthorized"}`.
+servers:
+  - url: https://spacestate.pixelbar.nl
+    description: Production
+  - url: http://localhost:3000
+    description: Local development (`just dev`)
+security: []
+tags:
+  - name: State
+  - name: History
+  - name: SpaceAPI
+  - name: Operations
+  - name: Legacy
+    description: Temporary compatibility shim. Deprecated.
+
+paths:
+  /api/v1/state:
+    get:
+      tags: [State]
+      summary: Get the current space state
+      operationId: getState
+      responses:
+        "200":
+          description: Current state.
+          headers:
+            Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
+            Cache-Control: { schema: { type: string, const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentState" }
+              example: { state: open, since: "2026-10-16T18:04:12.000Z" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [State]
+      summary: Change the space state
+      description: Requires an API key with the `write` role.
+      operationId: setState
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StateChangeRequest" }
+            example: { state: closed, user: alice, method: web }
+      responses:
+        "200":
+          description: State changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StateChangeResponse" }
+        "400":
+          description: Body failed validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The space is already in the requested state; nothing was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, state]
+                properties:
+                  error: { type: string, const: already_in_state }
+                  state: { $ref: "#/components/schemas/SpaceState" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/history:
+    get:
+      tags: [History]
+      summary: List state changes, newest first
+      description: Requires an API key with the `read` or `write` role.
+      operationId: getHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          description: Only entries at or after this time.
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Only entries at or before this time.
+          schema: { type: string, format: date-time }
+        - name: device
+          in: query
+          description: Only entries from this legacy device shortname.
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Page size. Values above 200 are clamped to 200.
+          schema: { type: integer, minimum: 1, default: 50, maximum: 200 }
+        - name: continuationToken
+          in: query
+          description: Opaque token from a previous page's `continuationToken`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of history.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryPage" }
+        "400":
+          description: Query failed validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/spaceapi:
+    get:
+      tags: [SpaceAPI]
+      summary: SpaceAPI 0.13 document
+      description: |
+        The configured SpaceAPI document with the live `open` / `state.open`
+        fields filled in from current state. See https://spaceapi.io/docs/.
+      operationId: getSpaceApi
+      responses:
+        "200":
+          description: SpaceAPI document.
+          headers:
+            Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
+            Cache-Control: { schema: { type: string, const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /healthz:
+    get:
+      tags: [Operations]
+      summary: Liveness probe
+      description: Process-only; does not touch storage.
+      operationId: healthz
+      responses:
+        "200":
+          description: Alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /:
+    get:
+      tags: [Legacy]
+      deprecated: true
+      summary: SpaceAPI document (legacy address)
+      description: Same response as `/api/v1/spaceapi`; the old public address of the document.
+      operationId: legacySpaceApiRoot
+      responses:
+        "200":
+          description: SpaceAPI document.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+  /index.php:
+    get:
+      tags: [Legacy]
+      deprecated: true
+      summary: SpaceAPI document (legacy address)
+      description: Same response as `/api/v1/spaceapi`.
+      operationId: legacySpaceApiIndex
+      responses:
+        "200":
+          description: SpaceAPI document.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+  /spacestate.php:
+    get:
+      tags: [Legacy]
+      deprecated: true
+      summary: Current state (legacy shape)
+      operationId: legacySpaceState
+      responses:
+        "200":
+          description: Current state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state]
+                properties:
+                  state: { $ref: "#/components/schemas/SpaceState" }
+  /togglestate.php:
+    get: &legacyToggle
+      tags: [Legacy]
+      deprecated: true
+      security:
+        - legacyToken: []
+      summary: Change state (legacy token + IP auth)
+      description: |
+        Authenticated by a per-device `token` **and** the caller's IP address
+        (both must match a configured legacy device). Parameters always come
+        from the query string; on POST any request body is ignored.
+
+        Invalid parameters and failed authentication both respond with a
+        redirect to https://www.pixelbar.nl/ rather than an error status.
+      operationId: legacyToggleStateGet
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
+      responses:
+        "200":
+          description: |
+            Plain text. `SUCCESS` if the state changed, otherwise
+            `ALLREADY TOGGLED TO THIS STATE` (sic — the typo is preserved on purpose).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+        "302":
+          description: Invalid parameters or unknown token/IP.
+          headers:
+            Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      <<: *legacyToggle
+      operationId: legacyToggleStatePost
+  /togglebaker.php:
+    get:
+      <<: *legacyToggle
+      operationId: legacyToggleBakerGet
+      summary: Change state (legacy, alias of /togglestate.php)
+    post:
+      <<: *legacyToggle
+      operationId: legacyToggleBakerPost
+      summary: Change state (legacy, alias of /togglestate.php)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        API key from `api-keys.yaml`. Roles: `read` (history) and `write`
+        (state changes; implies `read`). Send as `Authorization: Bearer <key>`.
+    legacyToken:
+      type: apiKey
+      in: query
+      name: token
+      description: |
+        Per-device token from `legacy.yaml`. The request's client IP must also
+        match the device's configured IP; failures redirect to
+        https://www.pixelbar.nl/ instead of returning 401.
+  responses:
+    Unauthorized:
+      description: Missing, unknown, or insufficiently privileged API key.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string, const: unauthorized }
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string, const: internal_error }
+  schemas:
+    SpaceState:
+      type: string
+      enum: [open, closed]
+    ChangeSource:
+      type: string
+      description: "`api` for `/api/v1`, `legacy` for the compatibility shim."
+      enum: [api, legacy]
+    CurrentState:
+      type: object
+      required: [state, since]
+      properties:
+        state: { $ref: "#/components/schemas/SpaceState" }
+        since: { type: string, format: date-time, description: When the state last changed. }
+    StateChangeRequest:
+      type: object
+      required: [state, user, method]
+      properties:
+        state: { $ref: "#/components/schemas/SpaceState" }
+        user: { type: string, minLength: 1, description: Who triggered the change. }
+        method: { type: string, minLength: 1, description: "How it was triggered (e.g. button, web)." }
+    StateChangeResponse:
+      type: object
+      required: [state, recordedAt]
+      properties:
+        state: { $ref: "#/components/schemas/SpaceState" }
+        recordedAt: { type: string, format: date-time }
+    HistoryEntry:
+      type: object
+      required: [state, user, method, source, changedAt]
+      properties:
+        state: { $ref: "#/components/schemas/SpaceState" }
+        user: { type: string }
+        method: { type: string }
+        deviceShortname: { type: string, description: Set for legacy device changes. }
+        source: { $ref: "#/components/schemas/ChangeSource" }
+        changedAt: { type: string, format: date-time }
+    HistoryPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryEntry" }
+        continuationToken:
+          type: string
+          description: Present when more results exist; pass back as `continuationToken`.
+    ValidationError:
+      type: object
+      required: [error, details]
+      properties:
+        error: { type: string, enum: [invalid_body, invalid_query] }
+        details:
+          type: array
+          description: Zod issues.
+          items: { type: object, additionalProperties: true }
+    SpaceApiDocument:
+      type: object
+      description: |
+        SpaceAPI 0.13 document (https://spaceapi.io/docs/). Content comes from
+        the `spaceapi.json` config; `open` and `state.open` are live.
+      required: [api, space, url, location, state, contact]
+      additionalProperties: true
+      properties:
+        api: { type: string, example: "0.13" }
+        space: { type: string }
+        url: { type: string, format: uri }
+        logo: { type: string, format: uri }
+        location: { type: object, additionalProperties: true }
+        contact: { type: object, additionalProperties: true }
+        state:
+          type: object
+          additionalProperties: true
+          properties:
+            open: { type: boolean }
+            lastchange: { type: integer, description: Unix timestamp. }

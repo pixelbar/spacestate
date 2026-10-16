@@ -10,6 +10,12 @@ working for hardware/consumers that haven't migrated yet (the physical
 space-state button, in particular). See `src/legacy/plugin.ts` for what that
 covers and why.
 
+## API docs
+
+The HTTP API is described by an OpenAPI 3.1 spec: [`docs/openapi.yaml`](docs/openapi.yaml)
+(validate with `npx @redocly/cli lint docs/openapi.yaml`). Paste it into
+https://editor.swagger.io or run `npx @redocly/cli preview-docs docs/openapi.yaml` to browse it.
+
 ## Local development
 
 Requires Docker (for Azurite, the local Table Storage emulator) and Node 22+.
