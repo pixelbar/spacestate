@@ -83,6 +83,39 @@ Releases are cut from `main` via Actions → Release → Run workflow. It turns
 `[Unreleased]` into a dated version (`Added` → minor, anything else → patch,
 never 1.0 automatically), bumps `package.json`/`package-lock.json`, commits
 `Release vX.Y.Z`, tags it, opens a GitHub Release, and pushes
-`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. Deploy by running
-`terraform apply` with that image tag (see above). The bot pushes to `main`,
-so if branch protection is on, allow `github-actions[bot]` to bypass it.
+`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. A final `deploy` job
+then waits for approval of the GitHub Environment `prod`, rolls the Container
+App to the `<sha>` image with `az containerapp update`, and waits for
+`/healthz`. Terraform ignores the image (`lifecycle.ignore_changes`), so
+`terraform apply` never rolls prod back; it only manages infrastructure.
+The bot pushes to `main`, so if branch protection is on, allow
+`github-actions[bot]` to bypass it.
+
+### One-time deploy setup
+
+```sh
+SUB=$(az account show --query id -o tsv)
+TENANT=$(az account show --query tenantId -o tsv)
+
+# Identity GitHub logs in as (no client secret; OIDC only)
+APP_ID=$(az ad app create --display-name spacestate-github-deploy --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "github-prod",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:pixelbar/spacestate:environment:prod",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# Allowed to update the app, scoped to its resource group only
+az role assignment create --assignee "$APP_ID" --role Contributor \
+  --scope "/subscriptions/$SUB/resourceGroups/pixelbar-spacestate"
+
+# GitHub: repo variables + the approval-gated environment
+gh variable set AZURE_CLIENT_ID --body "$APP_ID"
+gh variable set AZURE_TENANT_ID --body "$TENANT"
+gh variable set AZURE_SUBSCRIPTION_ID --body "$SUB"
+```
+
+Then in GitHub → Settings → Environments, create `prod` and add required
+reviewers.

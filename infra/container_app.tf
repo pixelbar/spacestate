@@ -4,6 +4,13 @@ resource "azurerm_container_app" "spacestate" {
   container_app_environment_id = azurerm_container_app_environment.spacestate.id
   revision_mode                = "Single"
 
+  # The Release workflow owns the running image (`az containerapp update`).
+  # `var.container_image` only seeds the first create; without this a later
+  # `terraform apply` would roll prod back to whatever tag is in the tfvars.
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
   identity {
     type = "SystemAssigned"
   }
