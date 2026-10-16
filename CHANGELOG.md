@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-16
+
 ### Fixed
 
 - Exceptions on the legacy toggle path are captured in Sentry once, by the shared error handler, with route and method. The state service and legacy handler only log them: Sentry dedupes the same error object, so capturing in every layer dropped the outer context (this supersedes the "exception capture" wording in 0.4.0).
@@ -47,7 +49,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Sentry continuous profiling via `@sentry/profiling-node`, configured in `src/observability/sentry.ts` and controlled by `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILE_SESSION_SAMPLE_RATE`. A no-op when `SENTRY_DSN` is unset.
 
 
-[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/pixelbar/spacestate/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pixelbar/spacestate/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pixelbar/spacestate/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pixelbar/spacestate/compare/v0.1.0...v0.2.0
