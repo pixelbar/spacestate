@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildTestApp } from "../helpers/buildTestApp.js";
 
-// Matches config/space.sample.yaml's "Pixelbar Rotterdam" legacy device.
+// Matches config/*.sample.* files's "Pixelbar Rotterdam" legacy device.
 const DEVICE_TOKEN = "dev-legacy-token-manual";
 const DEVICE_IP = "203.0.113.10";
 

@@ -18,7 +18,7 @@ const toggleQuerySchema = z.object({
  */
 export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async (
   fastify,
-  { stateService, configStore },
+  { stateService, legacyStore },
 ) => {
   const handler = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsedQuery = toggleQuerySchema.safeParse(request.query);
@@ -27,7 +27,7 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
     }
 
     const { token, user, state } = parsedQuery.data;
-    const auth = authenticateLegacyRequest(configStore.get(), request, token);
+    const auth = authenticateLegacyRequest(legacyStore.get(), request, token);
     if (!auth) {
       return reply.redirect(LEGACY_REDIRECT_URL);
     }

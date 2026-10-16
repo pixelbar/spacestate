@@ -1,5 +1,5 @@
 import type { FastifyRequest } from "fastify";
-import type { LegacyDevice, SpaceConfig } from "../config/schema.js";
+import type { LegacyConfig, LegacyDevice } from "../config/schema.js";
 import { constantTimeEquals } from "./timingSafeCompare.js";
 
 /**
@@ -20,7 +20,7 @@ export function resolveClientIp(request: FastifyRequest): string {
 }
 
 export function findLegacyDevice(
-  config: SpaceConfig,
+  config: LegacyConfig,
   token: string,
   ip: string,
 ): LegacyDevice | undefined {

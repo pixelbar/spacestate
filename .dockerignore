@@ -6,3 +6,4 @@ test/
 .gitignore
 docker-compose.yml
 infra/
+config/prod/

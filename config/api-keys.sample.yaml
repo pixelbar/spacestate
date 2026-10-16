@@ -1,0 +1,8 @@
+# Sample API keys for local development and tests. Not used in production.
+apiKeys:
+  - id: "dev-readonly"
+    key: "dev-read-key-0000000000"
+    role: "read"
+  - id: "dev-writer"
+    key: "dev-write-key-0000000000"
+    role: "write"

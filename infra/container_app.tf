@@ -29,8 +29,18 @@ resource "azurerm_container_app" "spacestate" {
       memory = "0.5Gi"
 
       env {
-        name  = "CONFIG_SOURCE"
-        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/space.yaml"
+        name  = "SPACEAPI_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/spaceapi.json"
+      }
+
+      env {
+        name  = "API_KEYS_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/api-keys.yaml"
+      }
+
+      env {
+        name  = "LEGACY_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/legacy.yaml"
       }
 
       env {

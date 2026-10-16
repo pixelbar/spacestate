@@ -1,0 +1,10 @@
+# Sample legacy device credentials for local development and tests.
+legacyDevices:
+  - shortname: "Pixelbar Rotterdam"
+    method: "Manual Switch"
+    ip: "203.0.113.10"
+    token: "dev-legacy-token-manual"
+  - shortname: "Wireless Spacestate Button"
+    method: "Spacestate Switch"
+    ip: "203.0.113.11"
+    token: "dev-legacy-token-button"

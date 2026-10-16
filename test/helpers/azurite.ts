@@ -8,7 +8,9 @@ export const AZURITE_CONNECTION_STRING =
 
 export function applyAzuriteEnv(): void {
   process.env.AZURE_STORAGE_CONNECTION_STRING ??= AZURITE_CONNECTION_STRING;
-  process.env.CONFIG_SOURCE ??= "file://./config/space.sample.yaml";
+  process.env.SPACEAPI_CONFIG_SOURCE ??= "file://./config/spaceapi.sample.json";
+  process.env.API_KEYS_CONFIG_SOURCE ??= "file://./config/api-keys.sample.yaml";
+  process.env.LEGACY_CONFIG_SOURCE ??= "file://./config/legacy.sample.yaml";
 }
 
 /** Deletes and recreates the test tables so each integration run starts from a clean slate. */

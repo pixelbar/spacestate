@@ -32,8 +32,10 @@ jobs:
           node-version: 24
           cache: npm
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
       - name: Install dependencies
-        run: npm ci
+        run: just install
 
       # Local Table Storage emulator for the integration tests.
       - name: Start Azurite
@@ -43,16 +45,16 @@ jobs:
             azurite-table --tableHost 0.0.0.0 --tablePort 10002
 
       - name: Typecheck
-        run: npm run typecheck
+        run: just typecheck
 
       - name: Build
-        run: npm run build
+        run: just build
 
       - name: Unit tests
-        run: npm run test:unit
+        run: just test-unit
 
       - name: Integration tests
-        run: npm run test:integration
+        run: just test-integration
 
   changelog:
     name: Changelog updated
@@ -70,14 +72,16 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - run: just install
 
       # Add the `skip-changelog` label to a PR for pure chores (CI-only, typos).
       - name: Require a CHANGELOG.md entry
         env:
           CHANGELOG_BASE: origin/${{ github.base_ref }}
           SKIP_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
-        run: npm run check-changelog
+        run: just check-changelog
 
   docker:
     name: Docker image builds

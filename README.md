@@ -17,7 +17,7 @@ Requires Docker (for Azurite, the local Table Storage emulator) and Node 22+.
 ```sh
 npm install
 docker compose up -d azurite
-npm run dev          # http://localhost:3000, config from config/space.sample.yaml
+just dev          # http://localhost:3000, config from config/*.sample.*
 ```
 
 Or run the whole thing containerized: `docker compose up --build`.
@@ -25,9 +25,9 @@ Or run the whole thing containerized: `docker compose up --build`.
 ## Tests
 
 ```sh
-npm run test:unit         # pure domain/config logic, no I/O
+just test-unit         # pure domain/config logic, no I/O
 docker compose up -d azurite
-npm run test:integration  # exercises both the new API and the legacy adapter
+just test-integration  # exercises both the new API and the legacy adapter
 ```
 
 ## Deploying
@@ -37,32 +37,64 @@ external DNS, so the custom domain rollout is two phases:
 
 ```sh
 cd infra
-terraform init
+terraform init -backend-config=backend.azurerm.hcl
 terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
 # read the `domain_verification_id` and `default_fqdn` outputs, create the
 # TXT + CNAME records at your DNS provider, wait for them to propagate, then:
 terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>" -var="bind_custom_domain=true"
 ```
 
-State is local (`terraform.tfstate`) for now — move to a remote backend
-(e.g. a blob container in the storage account this config creates) once
-more than one person needs to run `apply`.
+State is remote: storage account `pixelbartfstate`, container `spacestate`
+(see `infra/backend.azurerm.hcl`). Initialise with
+`terraform init -backend-config=backend.azurerm.hcl`; this needs `az login`
+and Storage Blob Data Contributor on the container.
 
-The app reads its config (space metadata, API keys, legacy device
-credentials) from a YAML blob rather than a database — see
-`config/space.sample.yaml` for the shape. After the first `apply`, upload
-a real one:
+To migrate an existing local state, run this once from the directory holding
+`terraform.tfstate`, then answer `yes` to copy it:
 
 ```sh
-az storage blob upload \
-  --account-name <storage_account_name output> \
-  --container-name config \
-  --name space.yaml \
-  --file ./space.yaml \
-  --auth-mode login
+az storage container create --account-name pixelbartfstate --name spacestate --auth-mode login
+terraform init -migrate-state -backend-config=backend.azurerm.hcl
 ```
 
-Editing that blob later takes effect on the next cold start (or within a
+The app reads its config from three blobs rather than a database, each
+with a sample under `config/`:
+
+- `spaceapi.json` — the public SpaceAPI document, exactly as served, minus
+  the live fields (`open`, `state.open`), which come from current state
+  (`config/spaceapi.sample.json`)
+- `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
+- `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
+
+After the first `apply`, upload real ones:
+
+```sh
+for f in spaceapi.json api-keys.yaml legacy.yaml; do
+  az storage blob upload \
+    --account-name <storage_account_name output> \
+    --container-name config \
+    --name "$f" \
+    --file "./$f" \
+    --auth-mode login
+done
+```
+
+To change a live config safely (pull, edit, validate, review diff, confirm, push):
+
+```sh
+cp .env.example .env   # then set SPACESTATE_STORAGE_ACCOUNT (just loads .env automatically)
+just edit spaceapi   # or api-keys | legacy: edit remote in $EDITOR, diff, confirm, push
+just pull            # diff remote vs config/prod/ (gitignored), confirm overwriting local
+just push            # diff remote vs config/prod/, confirm overwriting remote (add a name for one file)
+```
+
+To add an API key: `just api-key <id> --role read|write --add` appends a freshly
+generated key to `config/prod/api-keys.yaml`, then `just push api-keys`.
+
+Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
+`API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).
+
+Editing those blobs later takes effect on the next cold start (or within a
 few minutes if a replica is already running — see `src/config/loader.ts`),
 no redeploy needed.
 

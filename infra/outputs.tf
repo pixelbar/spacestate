@@ -14,7 +14,7 @@ output "environment_static_ip" {
 }
 
 output "storage_account_name" {
-  description = "Used to construct the CONFIG_SOURCE blob:// URL and for uploading the initial space.yaml."
+  description = "Used to construct the CONFIG_SOURCE blob:// URL and for uploading the initial config blobs."
   value       = azurerm_storage_account.spacestate.name
 }
 

@@ -13,10 +13,10 @@ const historyQuerySchema = z.object({
 
 export const historyRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   fastify,
-  { historyService, configStore },
+  { historyService, apiKeyStore },
 ) => {
   fastify.get("/api/v1/history", async (request, reply) => {
-    const key = resolveApiKey(configStore.get(), request);
+    const key = resolveApiKey(apiKeyStore.get(), request);
     if (!hasRole(key, "read")) {
       return reply.code(401).send({ error: "unauthorized" });
     }

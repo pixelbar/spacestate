@@ -9,6 +9,17 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `just api-key <id> [--role read|write] [--add]` generates an API key and its api-keys.yaml entry.
+- `just pull`, `just push` and `just edit <file>` sync the live config blobs with `config/prod/`, always showing a diff and asking before overwriting. A `justfile` now wraps the build, test and release commands, and CI uses it.
+
+### Changed
+
+- Terraform state moves to the `azurerm` backend (`pixelbartfstate/spacestate`); see README for the one-time migration.
+- Split config into three sources: a SpaceAPI JSON document matching the public one exactly, API keys, and legacy devices. `CONFIG_SOURCE` is replaced by `SPACEAPI_CONFIG_SOURCE`, `API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE`.
+- SpaceAPI output no longer includes `state.lastchange`, matching the existing public document.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added

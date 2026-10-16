@@ -11,7 +11,7 @@ const stateChangeBodySchema = z.object({
 
 export const stateRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   fastify,
-  { stateService, configStore },
+  { stateService, apiKeyStore },
 ) => {
   fastify.get("/api/v1/state", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
@@ -21,7 +21,7 @@ export const stateRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   });
 
   fastify.post("/api/v1/state", async (request, reply) => {
-    const key = resolveApiKey(configStore.get(), request);
+    const key = resolveApiKey(apiKeyStore.get(), request);
     if (!hasRole(key, "write")) {
       return reply.code(401).send({ error: "unauthorized" });
     }

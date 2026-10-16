@@ -1,6 +1,14 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { apiPlugin } from "./api/plugin.js";
-import { ConfigStore } from "./config/loader.js";
+import { ConfigStore, yamlParser } from "./config/loader.js";
+import {
+  apiKeysConfigSchema,
+  type ApiKeysConfig,
+  type LegacyConfig,
+  type SpaceApiConfig,
+  legacyConfigSchema,
+  spaceApiConfigSchema,
+} from "./config/schema.js";
 import { createConfigSource } from "./config/sources/index.js";
 import { HistoryService } from "./domain/history/service.js";
 import { StateService } from "./domain/state/service.js";
@@ -13,12 +21,24 @@ import { createTableClients } from "./storage/tableClients.js";
 
 export interface BuiltApp {
   app: FastifyInstance;
-  configStore: ConfigStore;
+  spaceApiStore: ConfigStore<SpaceApiConfig>;
+  apiKeyStore: ConfigStore<ApiKeysConfig>;
+  legacyStore: ConfigStore<LegacyConfig>;
 }
 
 export async function buildApp(): Promise<BuiltApp> {
-  const configSourceUrl = process.env.CONFIG_SOURCE ?? "file://./config/space.sample.yaml";
-  const configStore = await ConfigStore.create(createConfigSource(configSourceUrl));
+  const spaceApiStore = await ConfigStore.create(
+    createConfigSource(process.env.SPACEAPI_CONFIG_SOURCE ?? "file://./config/spaceapi.sample.json"),
+    yamlParser(spaceApiConfigSchema),
+  );
+  const apiKeyStore = await ConfigStore.create(
+    createConfigSource(process.env.API_KEYS_CONFIG_SOURCE ?? "file://./config/api-keys.sample.yaml"),
+    yamlParser(apiKeysConfigSchema),
+  );
+  const legacyStore = await ConfigStore.create(
+    createConfigSource(process.env.LEGACY_CONFIG_SOURCE ?? "file://./config/legacy.sample.yaml"),
+    yamlParser(legacyConfigSchema),
+  );
 
   const tableClients = createTableClients();
   const historyStore = new TableHistoryStore(tableClients.stateHistory);
@@ -31,12 +51,12 @@ export async function buildApp(): Promise<BuiltApp> {
 
   registerErrorHandler(app);
   await app.register(healthPlugin);
-  await app.register(apiPlugin, { configStore, stateService, historyService });
-  await app.register(legacyPlugin, { configStore, stateService });
+  await app.register(apiPlugin, { spaceApiStore, apiKeyStore, stateService, historyService });
+  await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });
 
   app.addHook("onClose", async () => {
-    await configStore.close();
+    await Promise.all([spaceApiStore.close(), apiKeyStore.close(), legacyStore.close()]);
   });
 
-  return { app, configStore };
+  return { app, spaceApiStore, apiKeyStore, legacyStore };
 }
