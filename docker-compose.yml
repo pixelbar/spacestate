@@ -1,0 +1,19 @@
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: "azurite-table --tableHost 0.0.0.0 --tablePort 10002"
+    ports:
+      - "10002:10002"
+
+  app:
+    build: .
+    environment:
+      PORT: "3000"
+      CONFIG_SOURCE: "file:///app/config/space.sample.yaml"
+      # Well-known Azurite development credential, not a secret — published
+      # by Microsoft for local emulator use.
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://azurite:10002/devstoreaccount1;"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - azurite
