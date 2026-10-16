@@ -12,7 +12,10 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration"
+    "test:integration": "vitest run test/integration",
+    "bump": "tsx scripts/bump-version.ts",
+    "check-changelog": "tsx scripts/check-changelog.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@azure/core-rest-pipeline": "^1.25.0",

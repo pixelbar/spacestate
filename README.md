@@ -71,3 +71,18 @@ no redeploy needed.
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
 error tracking, tracing, and logs — see `src/observability/sentry.ts`. The
 app runs fine with it unset; Sentry calls become no-ops.
+
+## CI/CD
+
+`.github/workflows/ci.yml` typechecks, builds, runs unit + integration tests
+(against Azurite), builds the Docker image, and on PRs requires a
+`CHANGELOG.md` entry under `## [Unreleased]` (label a PR `skip-changelog`
+for pure chores).
+
+Releases are cut from `main` via Actions → Release → Run workflow. It turns
+`[Unreleased]` into a dated version (`Added` → minor, anything else → patch,
+never 1.0 automatically), bumps `package.json`/`package-lock.json`, commits
+`Release vX.Y.Z`, tags it, opens a GitHub Release, and pushes
+`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. Deploy by running
+`terraform apply` with that image tag (see above). The bot pushes to `main`,
+so if branch protection is on, allow `github-actions[bot]` to bypass it.
