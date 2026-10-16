@@ -17,8 +17,13 @@ function invertedRowKey(iso: string): string {
   return `${inverted}-${randomUUID().slice(0, 8)}`;
 }
 
+// `monthIndex` is deliberately not bounds-checked by the caller (e.g.
+// December of the previous year is expressed as monthIndex -1) — the Date
+// constructor normalizes any integer month into a real year/month, which is
+// what correctly carries the year across a backward rollover.
 function monthKeyAt(year: number, monthIndex: number): string {
-  return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const normalized = new Date(year, monthIndex, 1);
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}`;
 }
 
 /** Inclusive list of "YYYY-MM" partition keys between two ISO timestamps. */
@@ -41,6 +46,35 @@ function monthsBetween(fromIso: string, toIso: string): string[] {
 
 function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+/**
+ * Table Storage has no cross-partition ORDER BY, and a single multi-partition
+ * query returns results in ascending PartitionKey order (oldest month first)
+ * regardless of filter clause order. To get a genuinely newest-first result
+ * across month boundaries, partitions are queried one at a time, newest
+ * month first, stopping once `limit` is reached. This token tracks where to
+ * resume: which month (by index into the newest-first month list) and the
+ * inner Table Storage continuation token within that month's partition.
+ */
+interface QueryCursor {
+  monthIndex: number;
+  innerToken?: string;
+}
+
+function encodeCursor(cursor: QueryCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeCursor(token: string | undefined): QueryCursor {
+  if (!token) return { monthIndex: 0 };
+  try {
+    const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
+    if (typeof parsed.monthIndex === "number") return parsed as QueryCursor;
+  } catch {
+    // Malformed/foreign token: restart from the newest month rather than erroring.
+  }
+  return { monthIndex: 0 };
 }
 
 function toHistoryEntry(entity: Record<string, unknown>): HistoryEntry {
@@ -92,21 +126,43 @@ export class TableHistoryStore implements HistoryStore {
     return Sentry.startSpan({ name: "StateHistory.query", op: "db.table.query" }, async () => {
       const to = query.to ?? new Date().toISOString();
       const from = query.from ?? new Date(new Date(to).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const months = monthsBetween(from, to).reverse(); // newest-first, matches RowKey ordering
-      const partitionFilter = months.map((m) => `PartitionKey eq '${m}'`).join(" or ");
+      const months = monthsBetween(from, to).reverse(); // newest month first
       const deviceFilter = query.device ? ` and deviceShortname eq '${escapeODataString(query.device)}'` : "";
+      // changedAt is a fixed-width ISO-8601 UTC string, so lexicographic
+      // comparison matches chronological order.
+      const timeFilter = ` and changedAt ge '${from}' and changedAt le '${to}'`;
       const limit = query.limit ?? 50;
 
-      const pages = this.client
-        .listEntities({ queryOptions: { filter: `(${partitionFilter})${deviceFilter}` } })
-        .byPage({ maxPageSize: limit, continuationToken: query.continuationToken });
+      const cursor = decodeCursor(query.continuationToken);
+      const items: HistoryEntry[] = [];
+      let monthIndex = cursor.monthIndex;
+      let innerToken = cursor.innerToken;
 
-      const { value: page, done } = await pages.next();
-      if (done || !page) {
-        return { items: [] };
+      while (monthIndex < months.length && items.length < limit) {
+        const filter = `PartitionKey eq '${months[monthIndex]}'${deviceFilter}${timeFilter}`;
+        const pageIterator = this.client
+          .listEntities({ queryOptions: { filter } })
+          .byPage({ maxPageSize: limit - items.length, continuationToken: innerToken });
+
+        const { value: page, done } = await pageIterator.next();
+
+        if (!done && page) {
+          items.push(...page.map(toHistoryEntry));
+          if (page.continuationToken) {
+            // This month's partition has more entries than fit in `limit`.
+            return { items, continuationToken: encodeCursor({ monthIndex, innerToken: page.continuationToken }) };
+          }
+        }
+
+        monthIndex += 1;
+        innerToken = undefined;
       }
 
-      return { items: page.map(toHistoryEntry), continuationToken: page.continuationToken };
+      const hasMoreMonths = monthIndex < months.length;
+      return {
+        items,
+        continuationToken: hasMoreMonths ? encodeCursor({ monthIndex }) : undefined,
+      };
     });
   }
 }
