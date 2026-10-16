@@ -165,9 +165,12 @@ function download(blobArgs: readonly string[], file: string): boolean {
     ["storage", "blob", "download", ...blobArgs, "--file", file, "--no-progress", "--output", "none"],
     { encoding: "utf8" },
   );
+  // Spawn failure (e.g. `az` not installed): stderr is null and `error` says why.
+  if (result.error) throw new Error(`Could not run az: ${result.error.message}`);
   if (result.status === 0) return true;
-  if (result.stderr.includes("BlobNotFound")) return false;
-  throw new Error(result.stderr.trim() || "az storage blob download failed.");
+  const stderr = result.stderr ?? "";
+  if (stderr.includes("BlobNotFound")) return false;
+  throw new Error(stderr.trim() || "az storage blob download failed.");
 }
 
 function az(args: readonly string[]): void {
