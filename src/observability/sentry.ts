@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 
 /**
  * Must run before anything else is imported (see index.ts) — Sentry's
@@ -17,6 +18,14 @@ export function initSentry(): void {
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? "development",
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
-    integrations: [Sentry.fastifyIntegration(), Sentry.nodeRuntimeMetricsIntegration()],
+    integrations: [
+      Sentry.fastifyIntegration(),
+      Sentry.nodeRuntimeMetricsIntegration(),
+      nodeProfilingIntegration(),
+    ],
+    // Set sampling rate for profiling - evaluated once per SDK.init call
+    profileSessionSampleRate: Number(process.env.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1.0),
+    // Trace lifecycle automatically enables profiling during active traces
+    profileLifecycle: "trace",
   });
 }
