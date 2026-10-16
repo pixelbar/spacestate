@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Exceptions on the legacy toggle path are captured in Sentry once, by the shared error handler, with route and method. The state service and legacy handler only log them: Sentry dedupes the same error object, so capturing in every layer dropped the outer context (this supersedes the "exception capture" wording in 0.4.0).
+
 ## [0.4.0] - 2026-10-16
 
 ### Added
