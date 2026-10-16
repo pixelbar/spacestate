@@ -1,3 +1,5 @@
+set dotenv-load
+
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 default:

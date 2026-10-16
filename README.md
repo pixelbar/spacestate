@@ -37,16 +37,25 @@ external DNS, so the custom domain rollout is two phases:
 
 ```sh
 cd infra
-terraform init
+terraform init -backend-config=backend.azurerm.hcl
 terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
 # read the `domain_verification_id` and `default_fqdn` outputs, create the
 # TXT + CNAME records at your DNS provider, wait for them to propagate, then:
 terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>" -var="bind_custom_domain=true"
 ```
 
-State is local (`terraform.tfstate`) for now — move to a remote backend
-(e.g. a blob container in the storage account this config creates) once
-more than one person needs to run `apply`.
+State is remote: storage account `pixelbartfstate`, container `spacestate`
+(see `infra/backend.azurerm.hcl`). Initialise with
+`terraform init -backend-config=backend.azurerm.hcl`; this needs `az login`
+and Storage Blob Data Contributor on the container.
+
+To migrate an existing local state, run this once from the directory holding
+`terraform.tfstate`, then answer `yes` to copy it:
+
+```sh
+az storage container create --account-name pixelbartfstate --name spacestate --auth-mode login
+terraform init -migrate-state -backend-config=backend.azurerm.hcl
+```
 
 The app reads its config from three blobs rather than a database, each
 with a sample under `config/`:
@@ -73,7 +82,7 @@ done
 To change a live config safely (pull, edit, validate, review diff, confirm, push):
 
 ```sh
-export SPACESTATE_STORAGE_ACCOUNT=<storage_account_name output>
+cp .env.example .env   # then set SPACESTATE_STORAGE_ACCOUNT (just loads .env automatically)
 just edit spaceapi   # or api-keys | legacy: edit remote in $EDITOR, diff, confirm, push
 just pull            # diff remote vs config/prod/ (gitignored), confirm overwriting local
 just push            # diff remote vs config/prod/, confirm overwriting remote (add a name for one file)

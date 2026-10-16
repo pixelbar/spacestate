@@ -41,7 +41,11 @@ try {
 
 async function run(args: Args): Promise<void> {
   const account = args.account ?? process.env.SPACESTATE_STORAGE_ACCOUNT;
-  if (!account) throw new Error("Pass --account or set SPACESTATE_STORAGE_ACCOUNT.");
+  if (!account) throw new Error("Pass --account or set SPACESTATE_STORAGE_ACCOUNT (see .env.example).");
+  // Azure storage account names; anything else (placeholders, brackets) makes `az` fail obscurely.
+  if (!/^[a-z0-9]{3,24}$/.test(account)) {
+    throw new Error(`"${account}" is not a valid storage account name (3-24 lowercase letters/digits).`);
+  }
 
   for (const name of args.names) {
     const { blob, schema } = CONFIGS[name];
