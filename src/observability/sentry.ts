@@ -20,6 +20,9 @@ export function initSentry(): void {
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
     integrations: [
       Sentry.fastifyIntegration(),
+      // Forwards Fastify's pino logs (request.log / app.log) to Sentry Logs,
+      // while still writing them to stdout.
+      Sentry.pinoIntegration(),
       Sentry.nodeRuntimeMetricsIntegration(),
       nodeProfilingIntegration(),
     ],

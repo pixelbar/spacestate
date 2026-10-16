@@ -23,6 +23,7 @@ export const stateRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   fastify.post("/api/v1/state", async (request, reply) => {
     const key = resolveApiKey(apiKeyStore.get(), request);
     if (!hasRole(key, "write")) {
+      request.log.warn({ keyId: key?.id }, "state change rejected: unauthorized");
       return reply.code(401).send({ error: "unauthorized" });
     }
 
@@ -32,6 +33,11 @@ export const stateRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
     }
 
     const result = await stateService.changeState({ ...parsed.data, source: "api" });
+
+    request.log.info(
+      { state: parsed.data.state, user: parsed.data.user, keyId: key?.id, changed: result.changed },
+      result.changed ? "space state changed" : "space state change ignored: already in state",
+    );
 
     if (!result.changed) {
       return reply.code(409).send({ error: "already_in_state", state: result.snapshot.state });

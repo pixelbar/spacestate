@@ -23,12 +23,14 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
   const handler = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsedQuery = toggleQuerySchema.safeParse(request.query);
     if (!parsedQuery.success) {
+      request.log.warn("legacy state change rejected: invalid query");
       return reply.redirect(LEGACY_REDIRECT_URL);
     }
 
     const { token, user, state } = parsedQuery.data;
     const auth = authenticateLegacyRequest(legacyStore.get(), request, token);
     if (!auth) {
+      request.log.warn({ user, state }, "legacy state change rejected: unknown token or IP");
       return reply.redirect(LEGACY_REDIRECT_URL);
     }
 
@@ -39,6 +41,11 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
       source: "legacy",
       deviceShortname: auth.device.shortname,
     });
+
+    request.log.info(
+      { state, user, device: auth.device.shortname, changed: result.changed },
+      result.changed ? "space state changed (legacy)" : "space state change ignored: already in state (legacy)",
+    );
 
     reply.type("text/plain");
     return result.changed ? LEGACY_SUCCESS : LEGACY_ALREADY_TOGGLED;
