@@ -74,10 +74,13 @@ To change a live config safely (pull, edit, validate, review diff, confirm, push
 
 ```sh
 export SPACESTATE_STORAGE_ACCOUNT=<storage_account_name output>
-just config-edit spaceapi   # or api-keys | legacy; --dry-run skips the push
-just config-pull spaceapi   # save live blob to config/prod/ (gitignored)
-just config-push spaceapi   # validate config/prod/, diff against live, confirm, push
+just edit spaceapi   # or api-keys | legacy: edit remote in $EDITOR, diff, confirm, push
+just pull            # diff remote vs config/prod/ (gitignored), confirm overwriting local
+just push            # diff remote vs config/prod/, confirm overwriting remote (add a name for one file)
 ```
+
+To add an API key: `just api-key <id> --role read|write --add` appends a freshly
+generated key to `config/prod/api-keys.yaml`, then `just push api-keys`.
 
 Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
 `API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).

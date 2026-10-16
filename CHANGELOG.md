@@ -11,7 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- `just config-edit|config-pull|config-push <spaceapi|api-keys|legacy>` pull, edit and push live config blobs, validating it and showing the diff before pushing on confirmation. A `justfile` now wraps the build, test and release commands, and CI uses it.
+- `just api-key <id> [--role read|write] [--add]` generates an API key and its api-keys.yaml entry.
+- `just pull`, `just push` and `just edit <file>` sync the live config blobs with `config/prod/`, always showing a diff and asking before overwriting. A `justfile` now wraps the build, test and release commands, and CI uses it.
 
 ### Changed
 

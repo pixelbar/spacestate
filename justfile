@@ -40,17 +40,21 @@ check-changelog *args:
 bump *args:
     npm run --silent bump -- {{args}}
 
-# Live config: <name> is spaceapi | api-keys | legacy. Needs `az login` and
-# $SPACESTATE_STORAGE_ACCOUNT (or --account NAME in args).
+# Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy (omit for all).
+# Needs `az login` and $SPACESTATE_STORAGE_ACCOUNT (or --account NAME in args).
 
-# Pull, edit in $EDITOR, review the diff, confirm, push.
-config-edit name *args:
-    npm run --silent edit-config -- {{name}} {{args}}
+# Diff remote against local; ask before overwriting the local file(s).
+pull *args:
+    npm run --silent config -- pull {{args}}
 
-# Save the live blob to config/prod/ (gitignored).
-config-pull name *args:
-    npm run --silent edit-config -- {{name}} --pull {{args}}
+# Diff remote against local; ask before overwriting the remote blob(s).
+push *args:
+    npm run --silent config -- push {{args}}
 
-# Validate config/prod/<blob>, review the diff against live, confirm, push.
-config-push name *args:
-    npm run --silent edit-config -- {{name}} --push {{args}}
+# Like push, but edit the remote version in $EDITOR first.
+edit name *args:
+    npm run --silent config -- edit {{name}} {{args}}
+
+# Generate an API key, e.g. `just api-key ha-bridge --role write --add`.
+api-key id *args:
+    npm run --silent api-key -- {{id}} {{args}}
