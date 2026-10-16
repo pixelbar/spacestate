@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- `npm run edit-config -- <spaceapi|api-keys|legacy>` pulls a live config blob, opens it in `$EDITOR`, validates it, shows the diff and pushes on confirmation.
+- `just config-edit|config-pull|config-push <spaceapi|api-keys|legacy>` pull, edit and push live config blobs, validating it and showing the diff before pushing on confirmation. A `justfile` now wraps the build, test and release commands, and CI uses it.
 
 ### Changed
 

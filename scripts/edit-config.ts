@@ -1,12 +1,15 @@
 /**
  * Pull a live config blob, edit it locally, review the diff, then push it back.
- * Usage: npm run edit-config -- <spaceapi|api-keys|legacy> [--account NAME] [--container NAME] [--dry-run]
+ * Usage: just config-edit|config-pull|config-push <spaceapi|api-keys|legacy> [--account NAME] [--container NAME] [--dry-run]
+ *   (no mode)  pull to a temp file, open $EDITOR, diff, confirm, push
+ *   --pull     save the live blob to config/prod/<blob>
+ *   --push     validate config/prod/<blob>, diff against live, confirm, push
  * Needs the Azure CLI (`az login`). The account defaults to $SPACESTATE_STORAGE_ACCOUNT.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { load as parseYaml } from "js-yaml";
 import type { ZodType } from "zod";
@@ -17,6 +20,8 @@ const CONFIGS: Record<string, { blob: string; schema: ZodType }> = {
   "api-keys": { blob: "api-keys.yaml", schema: apiKeysConfigSchema },
   legacy: { blob: "legacy.yaml", schema: legacyConfigSchema },
 };
+
+const LOCAL_DIR = "config/prod";
 
 const dir = mkdtempSync(join(tmpdir(), "spacestate-config-"));
 
@@ -37,7 +42,6 @@ async function run(dir: string): Promise<void> {
   if (!account) throw new Error("Pass --account or set SPACESTATE_STORAGE_ACCOUNT.");
 
   const original = join(dir, `original-${config.blob}`);
-  const edited = join(dir, config.blob);
   const blobArgs = [
     "--account-name", account,
     "--container-name", args.container,
@@ -47,28 +51,42 @@ async function run(dir: string): Promise<void> {
 
   process.stdout.write(`Pulling ${config.blob} from ${account}/${args.container}…\n`);
   az(["storage", "blob", "download", ...blobArgs, "--file", original, "--no-progress", "--output", "none"]);
-  copyFileSync(original, edited);
 
-  for (;;) {
-    const editor = process.env.VISUAL ?? process.env.EDITOR ?? "vi";
-    const edit = spawnSync(`${editor} "${edited}"`, { shell: true, stdio: "inherit" });
-    if (edit.status !== 0) throw new Error(`Editor exited with status ${edit.status}.`);
-
-    const problem = validate(edited, config.schema);
-    if (problem === undefined) break;
-    process.stderr.write(`Invalid config:\n${problem}\n`);
-    if (!(await confirm("Edit again?"))) throw new Error("Aborted; nothing pushed.");
+  const local = join(LOCAL_DIR, config.blob);
+  if (args.mode === "pull") {
+    if (existsSync(local) && showDiff(local, original) === "changed") {
+      if (!(await confirm(`Overwrite ${local} with the live version?`))) return;
+    }
+    mkdirSync(dirname(local), { recursive: true });
+    copyFileSync(original, local);
+    process.stdout.write(`Saved ${local}.\n`);
+    return;
   }
 
-  const diff = spawnSync("git", ["diff", "--no-index", "--color=auto", "--", original, edited], {
-    stdio: "inherit",
-  });
-  if (diff.status === 0) {
+  let edited = join(dir, config.blob);
+  if (args.mode === "push") {
+    if (!existsSync(local)) throw new Error(`${local} not found; run config-pull first.`);
+    edited = local;
+    const problem = validate(edited, config.schema);
+    if (problem !== undefined) throw new Error(`Invalid config:\n${problem}`);
+  } else {
+    copyFileSync(original, edited);
+    for (;;) {
+      const editor = process.env.VISUAL ?? process.env.EDITOR ?? "vi";
+      const edit = spawnSync(`${editor} "${edited}"`, { shell: true, stdio: "inherit" });
+      if (edit.status !== 0) throw new Error(`Editor exited with status ${edit.status}.`);
+
+      const problem = validate(edited, config.schema);
+      if (problem === undefined) break;
+      process.stderr.write(`Invalid config:\n${problem}\n`);
+      if (!(await confirm("Edit again?"))) throw new Error("Aborted; nothing pushed.");
+    }
+  }
+
+  if (showDiff(original, edited) === "same") {
     process.stdout.write("No changes; nothing to push.\n");
     return;
   }
-  if (diff.status !== 1) throw new Error("Could not compute diff.");
-
   if (args.dryRun) {
     process.stdout.write("Dry run; nothing pushed.\n");
     return;
@@ -80,6 +98,15 @@ async function run(dir: string): Promise<void> {
 
   az(["storage", "blob", "upload", ...blobArgs, "--file", edited, "--overwrite", "--no-progress", "--output", "none"]);
   process.stdout.write("Pushed. The app picks it up within a few minutes (or on next cold start).\n");
+}
+
+function showDiff(from: string, to: string): "same" | "changed" {
+  const diff = spawnSync("git", ["diff", "--no-index", "--color=auto", "--", from, to], {
+    stdio: "inherit",
+  });
+  if (diff.status === 0) return "same";
+  if (diff.status === 1) return "changed";
+  throw new Error("Could not compute diff.");
 }
 
 function validate(path: string, schema: ZodType): string | undefined {
@@ -109,21 +136,31 @@ function parseArgs(argv: string[]): {
   account?: string;
   container: string;
   dryRun: boolean;
+  mode: "edit" | "pull" | "push";
 } {
   let name: string | undefined;
   let account: string | undefined;
   let container = "config";
   let dryRun = false;
+  let mode: "edit" | "pull" | "push" = "edit";
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") {
       dryRun = true;
       continue;
     }
+    if (arg === "--pull" || arg === "--push") {
+      mode = arg === "--pull" ? "pull" : "push";
+      continue;
+    }
     if (arg === "--account" || arg === "--container") {
       const value = argv[i + 1];
       if (value === undefined) throw new Error(`${arg} needs a value.`);
-      if (arg === "--account") account = value;
+      if (arg === "--pull" || arg === "--push") {
+      mode = arg === "--pull" ? "pull" : "push";
+      continue;
+    }
+    if (arg === "--account") account = value;
       else container = value;
       i += 1;
       continue;
@@ -135,7 +172,7 @@ function parseArgs(argv: string[]): {
     throw new Error(`Unknown argument: ${arg}`);
   }
   if (name === undefined || !(name in CONFIGS)) {
-    throw new Error(`Usage: edit-config <${Object.keys(CONFIGS).join("|")}> [--account NAME] [--container NAME] [--dry-run]`);
+    throw new Error(`Usage: config-edit <${Object.keys(CONFIGS).join("|")}> [--account NAME] [--container NAME] [--pull|--push] [--dry-run]`);
   }
-  return { name, account, container, dryRun };
+  return { name, account, container, dryRun, mode };
 }

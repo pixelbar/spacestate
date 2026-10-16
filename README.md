@@ -17,7 +17,7 @@ Requires Docker (for Azurite, the local Table Storage emulator) and Node 22+.
 ```sh
 npm install
 docker compose up -d azurite
-npm run dev          # http://localhost:3000, config from config/*.sample.*
+just dev          # http://localhost:3000, config from config/*.sample.*
 ```
 
 Or run the whole thing containerized: `docker compose up --build`.
@@ -25,9 +25,9 @@ Or run the whole thing containerized: `docker compose up --build`.
 ## Tests
 
 ```sh
-npm run test:unit         # pure domain/config logic, no I/O
+just test-unit         # pure domain/config logic, no I/O
 docker compose up -d azurite
-npm run test:integration  # exercises both the new API and the legacy adapter
+just test-integration  # exercises both the new API and the legacy adapter
 ```
 
 ## Deploying
@@ -74,7 +74,9 @@ To change a live config safely (pull, edit, validate, review diff, confirm, push
 
 ```sh
 export SPACESTATE_STORAGE_ACCOUNT=<storage_account_name output>
-npm run edit-config -- spaceapi   # or api-keys | legacy; --dry-run to skip the push
+just config-edit spaceapi   # or api-keys | legacy; --dry-run skips the push
+just config-pull spaceapi   # save live blob to config/prod/ (gitignored)
+just config-push spaceapi   # validate config/prod/, diff against live, confirm, push
 ```
 
 Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
