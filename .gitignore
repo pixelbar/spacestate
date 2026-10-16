@@ -10,3 +10,4 @@ dist/
 *.tfstate.*
 *.tfplan
 .terraform.tfstate.lock.info
+config/prod/
