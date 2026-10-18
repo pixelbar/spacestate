@@ -16,6 +16,7 @@
     "bump": "tsx scripts/bump-version.ts",
     "config": "tsx scripts/config.ts",
     "api-key": "tsx scripts/generate-api-key.ts",
+    "import-history": "tsx scripts/import-history.ts",
     "check-changelog": "tsx scripts/check-changelog.ts",
     "docs:build": "tsx scripts/build-docs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -87,3 +87,7 @@ edit name *args:
 # Generate an API key, e.g. `just api-key ha-bridge --role write --add`.
 api-key id *args:
     npm run --silent api-key -- {{id}} {{args}}
+
+# Import the old MySQL dump into StateHistory (dry run unless --apply), e.g. `just import-history ~/dump.sql --apply`.
+import-history file *args:
+    npm run --silent import-history -- {{file}} {{args}}
