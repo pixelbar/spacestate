@@ -73,10 +73,10 @@ function callerAttributes(request: FastifyRequest): Record<string, string | numb
  * detail as the request exposes: socket + forwarded IPs, user agent, and every
  * header. Credentials (token query param, auth/cookie headers) are redacted.
  *
- * - `legacy.hits` counter and `legacy.response_time` distribution carry the
- *   attributes needed to slice by endpoint/caller (route, method, status, IPs,
- *   user agent).
- * - The `legacy.hit` log carries the full detail (all headers, query).
+ * - `legacy.hits` counter and `legacy.response_time` distribution are sliced
+ *   only by low-cardinality attributes (route, method, status).
+ * - The `legacy.hit` log carries all caller detail (IPs, user agent, all
+ *   headers, query).
  *
  * Called directly (not via register()) in legacyPlugin before the routes are
  * registered: a hook added in a separate plugin would be encapsulated and
@@ -88,14 +88,10 @@ export function addCallerMetrics(fastify: FastifyInstance): void {
     const caller = callerAttributes(request);
     const status = reply.statusCode;
 
-    const dimensions = {
-      route,
-      method: request.method,
-      status,
-      ip: caller.ip,
-      client_ip: caller.client_ip,
-      ...(caller.user_agent !== undefined && { user_agent: caller.user_agent }),
-    };
+    // Metric attributes become series dimensions, so only bounded values go
+    // here: IP and user agent are client-controlled on these public routes and
+    // would create unbounded series. They stay on the log below.
+    const dimensions = { route, method: request.method, status };
 
     Sentry.metrics.count("legacy.hits", 1, { attributes: dimensions });
     Sentry.metrics.distribution("legacy.response_time", reply.elapsedTime, {

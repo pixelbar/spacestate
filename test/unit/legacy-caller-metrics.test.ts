@@ -35,19 +35,17 @@ describe("legacy caller metrics", () => {
     });
 
     expect(sentry.metrics.count).toHaveBeenCalledWith("legacy.hits", 1, {
-      attributes: expect.objectContaining({
-        route: "/togglestate.php",
-        method: "GET",
-        status: 200,
-        ip: "203.0.113.10",
-        client_ip: "198.51.100.7",
-        user_agent: "ESP8266HTTPClient",
-      }),
+      attributes: { route: "/togglestate.php", method: "GET", status: 200 },
     });
     expect(sentry.metrics.distribution).toHaveBeenCalledOnce();
 
     const [message, attrs] = sentry.logger.info.mock.calls[0] as [string, Record<string, unknown>];
     expect(message).toBe("legacy.hit");
+    expect(attrs).toMatchObject({
+      ip: "203.0.113.10",
+      client_ip: "198.51.100.7",
+      user_agent: "ESP8266HTTPClient",
+    });
     expect(attrs.x_forwarded_for).toBe("198.51.100.7, 10.0.0.1");
     const serialized = JSON.stringify(attrs);
     expect(serialized).not.toContain("s3cret");
