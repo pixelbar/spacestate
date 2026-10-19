@@ -11,6 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- Sentry metrics for every legacy endpoint hit (`/spacestate.php`, `/index.php`, `/`, `/togglestate.php`, `/togglebaker.php`): `legacy.hits` counter and `legacy.response_time` distribution, plus a `legacy.hit` log with caller detail (socket and forwarded IPs, user agent, all request headers, query). The `token` query param and auth/cookie headers are redacted.
 - OpenAPI 3.1 spec for the `/api/v1` endpoints, `/healthz` and the legacy shim in `docs/openapi.yaml`.
 
 ## [0.4.1] - 2026-10-16
