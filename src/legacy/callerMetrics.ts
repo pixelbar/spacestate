@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { resolveClientIp } from "../auth/legacyToken.js";
+import { REDACTED, redactUrl } from "../observability/redact.js";
 
 /** Headers whose values are credentials — recorded as present, never with their value. */
 const SECRET_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "x-api-key"]);
@@ -20,7 +21,7 @@ function headerValue(value: string | string[] | undefined): string | undefined {
 function redactedHeaders(request: FastifyRequest): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(request.headers)) {
-    out[name] = SECRET_HEADERS.has(name) ? "[redacted]" : (headerValue(value) ?? "");
+    out[name] = SECRET_HEADERS.has(name) ? REDACTED : (headerValue(value) ?? "");
   }
   return out;
 }
@@ -29,7 +30,7 @@ function redactedQuery(request: FastifyRequest): Record<string, string> {
   const out: Record<string, string> = {};
   const query = (request.query ?? {}) as Record<string, unknown>;
   for (const [name, value] of Object.entries(query)) {
-    out[name] = SECRET_QUERY_PARAMS.has(name) ? "[redacted]" : truncate(String(value));
+    out[name] = SECRET_QUERY_PARAMS.has(name) ? REDACTED : truncate(String(value));
   }
   return out;
 }
@@ -56,7 +57,7 @@ function callerAttributes(request: FastifyRequest): Record<string, string | numb
     content_length: headerValue(h["content-length"]),
     http_version: request.raw.httpVersion,
     protocol: request.protocol,
-    url: truncate(request.url.replace(/([?&]token=)[^&]*/g, "$1[redacted]")),
+    url: truncate(redactUrl(request.url)),
     header_names: Object.keys(h).join(","),
     headers: JSON.stringify(redactedHeaders(request)),
     query: JSON.stringify(redactedQuery(request)),

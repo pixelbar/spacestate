@@ -1,5 +1,11 @@
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
+import {
+  scrubSentryBreadcrumb,
+  scrubSentryEvent,
+  scrubSentryLog,
+  scrubSpanFields,
+} from "./redact.js";
 
 /**
  * Must run before anything else is imported (see index.ts) — Sentry's
@@ -30,5 +36,15 @@ export function initSentry(): void {
     profileSessionSampleRate: Number(process.env.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1.0),
     // Trace lifecycle automatically enables profiling during active traces
     profileLifecycle: "trace",
+    // Last line of defence for credentials in URLs (issue #14). The request
+    // serializer and the 404 handler keep tokens out of the log lines we
+    // write; these cover everything the SDK collects by itself — span
+    // attributes (http.url, url.full, url.query), the request data and
+    // breadcrumbs it attaches to events, and the pino logs it forwards.
+    beforeSend: (event) => scrubSentryEvent(event),
+    beforeSendTransaction: (event) => scrubSentryEvent(event),
+    beforeSendSpan: (span) => ({ ...span, ...scrubSpanFields(span) }),
+    beforeBreadcrumb: (breadcrumb) => scrubSentryBreadcrumb(breadcrumb),
+    beforeSendLog: (log) => scrubSentryLog(log),
   });
 }
