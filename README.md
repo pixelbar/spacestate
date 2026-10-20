@@ -68,6 +68,8 @@ external DNS, so the custom domain rollout is two phases:
 ```sh
 cd infra
 terraform init -backend-config=backend.azurerm.hcl
+# Once, so every apply from this clone keeps Sentry wired (see "Observability"):
+echo 'sentry_dsn = "https://<key>@<org>.ingest.de.sentry.io/<project>"' > sentry.auto.tfvars
 terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
 # read the `domain_verification_id` and `default_fqdn` outputs, create the
 # TXT + CNAME records at your DNS provider, wait for them to propagate, then:
@@ -132,11 +134,28 @@ no redeploy needed.
 
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
 error tracking, tracing, and logs — see `src/observability/sentry.ts`. The
-app runs fine with it unset; Sentry calls become no-ops.
+app runs fine with it unset; Sentry calls become no-ops. Startup says which
+it is: the `spacestate started` log carries `sentryEnabled: true|false`, and
+a run without a DSN also logs a `Sentry is disabled` warning (visible in
+Container Apps logs / Log Analytics — it cannot reach Sentry itself).
 
-In production the DSN comes from Terraform: pass `-var="sentry_dsn=..."` (or
-set it in a gitignored `*.auto.tfvars`) on `apply`. Without it the Container
-App has no `SENTRY_DSN` and **nothing is reported**.
+In production the DSN comes from Terraform, and **an apply without it fails**
+rather than quietly deploying with reporting off:
+
+```sh
+# infra/sentry.auto.tfvars (gitignored) — picked up by every apply:
+sentry_dsn = "https://<key>@<org>.ingest.de.sentry.io/<project>"
+```
+
+Equivalently, pass `-var="sentry_dsn=..."` per apply. If `sentry_dsn` is empty,
+`terraform plan`/`apply` stops with a validation error naming the variable. To
+deploy without error reporting on purpose, say so explicitly with
+`-var="sentry_enabled=false"`; the DSN is then ignored (no `sentry-dsn` secret,
+no `SENTRY_DSN` on the container) and the `sentry_enabled` output reads `false`.
+
+There is no Key Vault in this stack, and `just pull`/`push`/`edit` only move the
+three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
+Terraform is the one place the DSN lives. Rotating it is an `apply`.
 
 What is reported: 5xx errors (with route/method), config reload and
 state-service failures, startup crashes, and every `request.log`/`app.log`

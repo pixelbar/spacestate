@@ -21,3 +21,8 @@ output "storage_account_name" {
 output "config_container_name" {
   value = azurerm_storage_container.config.name
 }
+
+output "sentry_enabled" {
+  description = "Whether the deployed revision gets a SENTRY_DSN. False only when the operator passed sentry_enabled=false, i.e. chose to run without error reporting."
+  value       = var.sentry_enabled
+}
