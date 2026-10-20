@@ -148,3 +148,32 @@ browser. Curl and the code samples are unaffected.
 Every PR needs a `CHANGELOG.md` entry under `[Unreleased]`, enforced by CI. Add
 the `skip-changelog` label for pure chores. `just check-changelog --base
 origin/main` runs the same check locally.
+
+### Conflicts
+
+Two PRs that both add entries conflict in `CHANGELOG.md` as soon as one merges,
+and after a release every open PR does, because `[Unreleased]` is emptied.
+Keeping both sides is almost always right, so that is automated:
+
+- **On GitHub**, `.github/workflows/changelog-merge.yml` runs whenever `main`'s
+  `CHANGELOG.md` changes and after each Release. For every open PR from this
+  repo that edits the file, it merges `main` in; if `CHANGELOG.md` is the only
+  conflict and the resolution is safe, it pushes the merge commit and comments
+  on the PR. Otherwise it changes nothing and comments why. Fork PRs and PRs
+  with other conflicts are left alone.
+- **Locally**, in a merge or rebase that stopped on `CHANGELOG.md`, run `just
+  changelog-merge`. `just changelog-merge-driver` registers it as a git merge
+  driver for your clone, so git does it by itself.
+
+"Safe" means `scripts/changelog-merge.ts` can do it without guessing: the
+branch's new entries go at the end of their section (never a second heading),
+an entry both sides added is kept once, one `main` has already released is
+dropped, and after a release the branch's entries land in the new
+`[Unreleased]`. It refuses — leaving the conflict to a person — when both sides
+changed the same entry, when the branch changed an entry that has since been
+released, when a side has a section twice, an unknown `###` heading or prose
+that isn't a list entry, or when both sides changed the intro, the released
+versions or the links.
+
+For CI to run on those pushed merges, a maintainer sets up a GitHub App; see
+"Changelog conflicts" in the README.
