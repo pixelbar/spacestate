@@ -9,10 +9,14 @@ import { nodeProfilingIntegration } from "@sentry/profiling-node";
  * No-ops cleanly when SENTRY_DSN is unset (local dev, tests, CI) — every
  * Sentry.* call elsewhere in the app is then a safe no-op, no extra guards
  * needed at the call sites.
+ *
+ * @returns whether Sentry was initialized, i.e. whether a DSN was present.
+ * index.ts logs this at startup so a deploy that reports nothing is visible
+ * in the logs instead of only in Sentry's absence.
  */
-export function initSentry(): void {
-  const dsn = process.env.SENTRY_DSN;
-  if (!dsn) return;
+export function initSentry(): boolean {
+  const dsn = process.env.SENTRY_DSN?.trim();
+  if (!dsn) return false;
 
   Sentry.init({
     dsn,
@@ -31,4 +35,6 @@ export function initSentry(): void {
     // Trace lifecycle automatically enables profiling during active traces
     profileLifecycle: "trace",
   });
+
+  return true;
 }
