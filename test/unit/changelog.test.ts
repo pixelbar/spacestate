@@ -12,6 +12,7 @@ import {
   parseUnreleasedSections,
   readPackageVersion,
   releaseTags,
+  setOpenApiVersion,
   SKIP_CHANGELOG_LABEL,
   setPackageVersion,
   truthyFlag,
@@ -247,5 +248,58 @@ describe("versionNotes", () => {
     const result = applyRelease(SAMPLE, "0.1.0", "2026-10-10");
     if (!result.bump) throw new Error("expected a bump");
     expect(versionNotes(result.changelog, result.version)).toBe(result.notes);
+  });
+});
+
+describe("setOpenApiVersion", () => {
+  const SPEC = `openapi: 3.1.0
+info:
+  title: Pixelbar spacestate API
+  version: 0.4.1
+  description: |
+    Version 1 of the API.
+servers:
+  - url: https://spacestate.pixelbar.nl
+components:
+  schemas:
+    Thing:
+      properties:
+        version: { type: string }
+`;
+
+  it("rewrites info.version and nothing else", () => {
+    const updated = setOpenApiVersion(SPEC, "0.5.0");
+    expect(updated).toContain("  version: 0.5.0\n");
+    expect(updated).toContain("openapi: 3.1.0");
+    expect(updated).toContain("        version: { type: string }");
+    expect(updated).toContain("    Version 1 of the API.");
+  });
+
+  it("leaves the rest of the file byte-identical", () => {
+    const updated = setOpenApiVersion(SPEC, "0.5.0");
+    expect(updated).toBe(SPEC.replace("version: 0.4.1", "version: 0.5.0"));
+  });
+
+  it("ignores a version: line inside the description block scalar", () => {
+    const spec = `openapi: 3.1.0
+info:
+  title: Pixelbar spacestate API
+  description: |
+    Notes:
+      version: pin this in your client
+  version: 0.4.1
+paths: {}
+`;
+    const updated = setOpenApiVersion(spec, "0.5.0");
+    expect(updated).toContain("      version: pin this in your client");
+    expect(updated).toContain("  version: 0.5.0\n");
+  });
+
+  it("rejects a spec with no info block", () => {
+    expect(() => setOpenApiVersion("openapi: 3.1.0\npaths: {}\n", "0.5.0")).toThrow(/info:/);
+  });
+
+  it("rejects an info block with no version", () => {
+    expect(() => setOpenApiVersion("info:\n  title: x\npaths: {}\n", "0.5.0")).toThrow(/version/);
   });
 });

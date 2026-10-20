@@ -12,7 +12,12 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Added
 
 - OpenAPI 3.1 spec for the `/api/v1` endpoints, `/healthz` and the legacy shim in `docs/openapi.yaml`.
-- The spec is published at pixelbar.nl/spacestate/ as a browsable reference (vitepress-openapi, themed to match pixelbar.nl/pixel), built by `just docs-build` and deployed to GitHub Pages by `.github/workflows/docs.yml`. The site is generated from `openapi.yaml`, so editing the spec is the only step needed to update it.
+- The spec is published at pixelbar.nl/spacestate/ as a browsable reference (vitepress-openapi, themed to match pixelbar.nl/pixel), built by `just docs-build` and deployed to GitHub Pages. The site is generated from `openapi.yaml`, so editing the spec is the only step needed to update it.
+- Cutting a release publishes the docs site to GitHub Pages from the released commit (`docs-build`/`docs-deploy` in the Release workflow), so the live reference is the released API. `.github/workflows/docs.yml` now builds on pull requests and republishes only on `workflow_dispatch`; both deploys share the `pages` concurrency group.
+
+### Changed
+
+- `just bump` also rewrites `info.version` in `docs/openapi.yaml`, so the published reference carries the released version instead of the last hand-edited one.
 
 ## [0.4.1] - 2026-10-16
 

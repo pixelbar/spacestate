@@ -9,6 +9,10 @@ name: Release
 # once someone approves GitHub Environment `prod`. It only swaps the image
 # (`az containerapp update`); Terraform still owns the infrastructure and this
 # workflow never applies it.
+# Releasing also publishes the docs site to GitHub Pages from the release
+# commit, so the published API reference is the released one. The Docs site
+# workflow builds it on pull requests and can republish by hand, but a release
+# is the only thing that publishes on its own.
 on:
   workflow_dispatch:
 
@@ -227,3 +231,57 @@ jobs:
           done
           echo "::error::https://${fqdn}/healthz did not become healthy. Roll back by re-running the previous release's image: az containerapp update --image ghcr.io/${{ github.repository }}:<previous-sha>"
           exit 1
+
+  docs-build:
+    name: Build the docs site
+    needs: bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - run: just install
+
+      # The site renders whatever the spec says, so an invalid spec is a broken
+      # site. Catch it here rather than in the browser.
+      - name: Lint the spec
+        run: npx --yes @redocly/cli@2 lint docs/openapi.yaml
+
+      - name: Build
+        run: just docs-build
+
+      - name: Upload the site for Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  docs-deploy:
+    name: Publish to GitHub Pages
+    needs: docs-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Shared with the Docs site workflow's manual publish: one Pages deploy at
+    # a time, and never cancel one halfway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
