@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { ConfigStore } from "../config/loader.js";
 import type { LegacyConfig, SpaceApiConfig } from "../config/schema.js";
 import type { StateService } from "../domain/state/service.js";
+import { addCallerMetrics } from "./callerMetrics.js";
 import { legacySpaceApiRoute } from "./routes/spaceapi.js";
 import { spacestateRoute } from "./routes/spacestate.js";
 import { togglestateRoutes } from "./routes/togglestate.js";
@@ -19,6 +20,7 @@ export interface LegacyPluginOptions {
  * directory and the one `register()` call for it in app.ts.
  */
 export const legacyPlugin: FastifyPluginAsync<LegacyPluginOptions> = async (fastify, opts) => {
+  addCallerMetrics(fastify);
   await fastify.register(spacestateRoute, opts);
   await fastify.register(legacySpaceApiRoute, opts);
   await fastify.register(togglestateRoutes, opts);

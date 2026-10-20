@@ -11,6 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- Sentry metrics for every legacy endpoint hit (`/spacestate.php`, `/index.php`, `/`, `/togglestate.php`, `/togglebaker.php`): `legacy.hits` counter and `legacy.response_time` distribution (attributes: route, method, status only, to keep series bounded), plus a `legacy.hit` log with caller detail (socket and forwarded IPs, user agent, all request headers, query). The `token` query param and auth/cookie headers are redacted.
 - OpenAPI 3.1 spec for the `/api/v1` endpoints, `/healthz` and the legacy shim in `docs/openapi.yaml`.
 - The spec is published at pixelbar.nl/spacestate/ as a browsable reference (vitepress-openapi, themed to match pixelbar.nl/pixel), built by `just docs-build` and deployed to GitHub Pages. The site is generated from `openapi.yaml`, so editing the spec is the only step needed to update it.
 - Cutting a release publishes the docs site to GitHub Pages from the released commit (`docs-build`/`docs-deploy` in the Release workflow), so the live reference is the released API. `.github/workflows/docs.yml` now builds on pull requests and republishes only on `workflow_dispatch`; both deploys share the `pages` concurrency group.
