@@ -13,8 +13,24 @@ covers and why.
 ## API docs
 
 The HTTP API is described by an OpenAPI 3.1 spec: [`docs/openapi.yaml`](docs/openapi.yaml)
-(validate with `npx @redocly/cli lint docs/openapi.yaml`). Paste it into
-https://editor.swagger.io or run `npx @redocly/cli preview-docs docs/openapi.yaml` to browse it.
+(validate with `npx @redocly/cli lint docs/openapi.yaml`).
+
+It is published as a browsable reference at **<https://pixelbar.nl/spacestate/>**
+([Scalar](https://github.com/scalar/scalar), themed to match
+[pixelbar.nl/pixel](https://pixelbar.nl/pixel)), with the raw spec alongside it
+at <https://pixelbar.nl/spacestate/openapi.yaml>.
+
+Editing `docs/openapi.yaml` is the whole update: the page loads the spec in the
+browser, so nothing regenerates and `docs/reference.html` never changes. A push
+to `main` republishes it (`.github/workflows/docs.yml`).
+
+```sh
+just docs-preview   # build + serve the site on http://localhost:8000
+just docs-build     # build only, into docs/dist/
+```
+
+See [`AGENTS.md`](AGENTS.md) for refreshing the theme from `/pixel` and bumping
+Scalar.
 
 ## Local development
 

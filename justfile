@@ -34,6 +34,19 @@ check: typecheck build test
 azurite:
     docker compose up -d azurite
 
+# Build the API reference site into docs/dist/ (what GitHub Pages publishes).
+docs-build *args:
+    npm run --silent docs:build -- {{args}}
+
+# Build it, then preview on http://localhost:8000 (Ctrl-C to stop).
+docs-preview: docs-build
+    @echo "http://localhost:8000"
+    @python3 -m http.server 8000 --directory docs/dist
+
+# Print the live pixelbar.nl/pixel design tokens (see AGENTS.md).
+pixel-tokens:
+    @./scripts/pixel-tokens.sh
+
 # Fail unless CHANGELOG.md is updated, e.g. `just check-changelog --base origin/main`.
 check-changelog *args:
     npm run --silent check-changelog -- {{args}}

@@ -11,3 +11,4 @@ dist/
 *.tfplan
 .terraform.tfstate.lock.info
 config/prod/
+docs/dist/

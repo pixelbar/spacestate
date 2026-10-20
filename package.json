@@ -17,6 +17,7 @@
     "config": "tsx scripts/config.ts",
     "api-key": "tsx scripts/generate-api-key.ts",
     "check-changelog": "tsx scripts/check-changelog.ts",
+    "docs:build": "tsx scripts/build-docs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

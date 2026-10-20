@@ -12,16 +12,49 @@ info:
 
     ## Authentication
 
-    | Endpoint | Auth |
-    | --- | --- |
-    | `GET /api/v1/state`, `GET /api/v1/spaceapi`, `/healthz`, legacy reads | None (public) |
-    | `GET /api/v1/history` | Bearer API key, `read` or `write` role |
-    | `POST /api/v1/state` | Bearer API key, `write` role |
-    | legacy `togglestate.php` / `togglebaker.php` | Per-device `token` query parameter **and** a matching client IP |
+    Reading is open to everyone: the current state, the SpaceAPI document and
+    the health check need no credentials. Two kinds of credential exist for
+    everything else, and both are issued by the Pixelbar board — ask them if
+    you need one.
 
-    API keys are issued in `api-keys.yaml` and sent as
-    `Authorization: Bearer <key>`. A missing, unknown or under-privileged key
-    gets `401 {"error":"unauthorized"}`.
+    ### API key
+
+    A bearer token, used for reading history and for changing the state. Keys
+    carry a role: `read` covers history, `write` covers history and state
+    changes.
+
+    ```http
+    POST /api/v1/state HTTP/1.1
+    Host: spacestate.pixelbar.nl
+    Authorization: Bearer <your-api-key>
+    Content-Type: application/json
+
+    {
+      "state": "open",
+      "user": "your-name",
+      "method": "api"
+    }
+    ```
+
+    A missing, unknown or under-privileged key gets
+    `401 {"error":"unauthorized"}`.
+
+    ### Legacy device token
+
+    The deprecated toggle endpoints take a per-device token in the query
+    string instead, and accept it only from that device's registered IP
+    address. These exist for hardware that predates the API key scheme; build
+    new integrations against `POST /api/v1/state`.
+
+    ```
+    https://spacestate.pixelbar.nl/togglestate.php
+      ?token=<your-device-token>
+      &user=your-name
+      &state=open
+    ```
+
+    A bad token, or a good token from an unexpected address, redirects to
+    <https://www.pixelbar.nl/> rather than returning an error status.
 servers:
   - url: https://spacestate.pixelbar.nl
     description: Production
@@ -30,11 +63,19 @@ servers:
 security: []
 tags:
   - name: State
+    description: Whether the space is open or closed right now, and changing it.
   - name: History
+    description: Every past open/close, newest first, as a paged list.
   - name: SpaceAPI
+    description: >-
+      The space's SpaceAPI document — the shared format hackerspace status
+      tools read to show whether we're open.
   - name: Operations
+    description: Health checks for the service itself.
   - name: Legacy
-    description: Temporary compatibility shim. Deprecated.
+    description: >-
+      The pre-rewrite URLs, kept working for hardware and consumers that
+      haven't migrated. Deprecated — don't build against these.
 
 paths:
   /api/v1/state:
@@ -212,7 +253,7 @@ paths:
                 properties:
                   state: { $ref: "#/components/schemas/SpaceState" }
   /togglestate.php:
-    get: &legacyToggle
+    get:
       tags: [Legacy]
       deprecated: true
       security:
@@ -227,7 +268,11 @@ paths:
         redirect to https://www.pixelbar.nl/ rather than an error status.
       operationId: legacyToggleStateGet
       parameters:
-        - { name: token, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - name: token
+          in: query
+          required: true
+          description: The device's token, issued by the Pixelbar board.
+          schema: { type: string, minLength: 1 }
         - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
         - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
       responses:
@@ -246,33 +291,133 @@ paths:
             Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
         "500": { $ref: "#/components/responses/InternalError" }
     post:
-      <<: *legacyToggle
+      tags: [Legacy]
+      deprecated: true
+      security:
+        - legacyToken: []
+      summary: Change state (legacy token + IP auth)
+      description: |
+        Authenticated by a per-device `token` **and** the caller's IP address
+        (both must match a configured legacy device). Parameters always come
+        from the query string; on POST any request body is ignored.
+
+        Invalid parameters and failed authentication both respond with a
+        redirect to https://www.pixelbar.nl/ rather than an error status.
       operationId: legacyToggleStatePost
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The device's token, issued by the Pixelbar board.
+          schema: { type: string, minLength: 1 }
+        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
+      responses:
+        "200":
+          description: |
+            Plain text. `SUCCESS` if the state changed, otherwise
+            `ALLREADY TOGGLED TO THIS STATE` (sic — the typo is preserved on purpose).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+        "302":
+          description: Invalid parameters or unknown token/IP.
+          headers:
+            Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
+        "500": { $ref: "#/components/responses/InternalError" }
   /togglebaker.php:
     get:
-      <<: *legacyToggle
+      tags: [Legacy]
+      deprecated: true
+      security:
+        - legacyToken: []
+      summary: Change state (legacy, alias of /togglestate.php)
+      description: |
+        Authenticated by a per-device `token` **and** the caller's IP address
+        (both must match a configured legacy device). Parameters always come
+        from the query string; on POST any request body is ignored.
+
+        Invalid parameters and failed authentication both respond with a
+        redirect to https://www.pixelbar.nl/ rather than an error status.
       operationId: legacyToggleBakerGet
-      summary: Change state (legacy, alias of /togglestate.php)
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The device's token, issued by the Pixelbar board.
+          schema: { type: string, minLength: 1 }
+        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
+      responses:
+        "200":
+          description: |
+            Plain text. `SUCCESS` if the state changed, otherwise
+            `ALLREADY TOGGLED TO THIS STATE` (sic — the typo is preserved on purpose).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+        "302":
+          description: Invalid parameters or unknown token/IP.
+          headers:
+            Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
+        "500": { $ref: "#/components/responses/InternalError" }
     post:
-      <<: *legacyToggle
-      operationId: legacyToggleBakerPost
+      tags: [Legacy]
+      deprecated: true
+      security:
+        - legacyToken: []
       summary: Change state (legacy, alias of /togglestate.php)
+      description: |
+        Authenticated by a per-device `token` **and** the caller's IP address
+        (both must match a configured legacy device). Parameters always come
+        from the query string; on POST any request body is ignored.
+
+        Invalid parameters and failed authentication both respond with a
+        redirect to https://www.pixelbar.nl/ rather than an error status.
+      operationId: legacyToggleBakerPost
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The device's token, issued by the Pixelbar board.
+          schema: { type: string, minLength: 1 }
+        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
+      responses:
+        "200":
+          description: |
+            Plain text. `SUCCESS` if the state changed, otherwise
+            `ALLREADY TOGGLED TO THIS STATE` (sic — the typo is preserved on purpose).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+        "302":
+          description: Invalid parameters or unknown token/IP.
+          headers:
+            Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
+        "500": { $ref: "#/components/responses/InternalError" }
 
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: |
-        API key from `api-keys.yaml`. Roles: `read` (history) and `write`
-        (state changes; implies `read`). Send as `Authorization: Bearer <key>`.
+      description: >-
+        An API key issued by the Pixelbar board. A `read` key can fetch
+        history; a `write` key can also change the state.
     legacyToken:
       type: apiKey
       in: query
       name: token
-      description: |
-        Per-device token from `legacy.yaml`. The request's client IP must also
-        match the device's configured IP; failures redirect to
+      description: >-
+        A per-device token issued by the Pixelbar board, accepted only from
+        that device's registered IP address. Failures redirect to
         https://www.pixelbar.nl/ instead of returning 401.
   responses:
     Unauthorized:
