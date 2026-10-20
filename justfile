@@ -34,18 +34,18 @@ check: typecheck build test
 azurite:
     docker compose up -d azurite
 
-# Build the API reference site into docs/dist/ (what GitHub Pages publishes).
+# Build the API reference site into docs/.vitepress/dist/ (what Pages publishes).
 docs-build *args:
     npm run --silent docs:build -- {{args}}
 
-# Build it, then preview on http://localhost:8000 (Ctrl-C to stop).
-docs-preview: docs-build
-    @echo "http://localhost:8000"
-    @python3 -m http.server 8000 --directory docs/dist
+# Preview on http://localhost:8000/spacestate/ with hot reload (Ctrl-C to stop).
+docs-preview:
+    @npm run --silent docs:build -- --prepare-only
+    @npx vitepress dev docs --port 8000
 
-# Print the live pixelbar.nl/pixel design tokens (see AGENTS.md).
-pixel-tokens:
-    @./scripts/pixel-tokens.sh
+# Refresh the copied pixelbar.nl/pixel theme (see AGENTS.md).
+pixel-theme:
+    @./scripts/pixel-theme.sh
 
 # Fail unless CHANGELOG.md is updated, e.g. `just check-changelog --base origin/main`.
 check-changelog *args:

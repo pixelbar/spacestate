@@ -7,108 +7,116 @@ easy to get wrong.
 ## The API reference site
 
 `https://pixelbar.nl/spacestate/` — the OpenAPI spec rendered with
-[Scalar](https://github.com/scalar/scalar), themed to match
-[pixelbar.nl/pixel](https://pixelbar.nl/pixel).
+[vitepress-openapi](https://github.com/enzonotario/vitepress-openapi), themed to
+match [pixelbar.nl/pixel](https://pixelbar.nl/pixel).
 
-Three files, and that is the whole site:
-
-| File | Role |
+| Path | Role |
 | --- | --- |
 | `docs/openapi.yaml` | The spec. The only file you edit to change what the docs say. |
-| `docs/reference.html` | The page: Scalar's loader plus the Pixel theme. Static; no spec content in it. |
-| `scripts/build-docs.ts` | Copies those two into `docs/dist/` as `index.html` + `openapi.yaml`. |
+| `docs/index.md`, `docs/all.md`, `docs/operations/` | Three pages, each one component. No spec content in them. |
+| `docs/.vitepress/config.mts` | Site shell: nav, sidebar (generated from the spec), fonts. |
+| `docs/.vitepress/theme/pixel.css` | A copy of the /pixel theme. Generated — see below. |
+| `docs/.vitepress/theme/openapi.css` | What Pixel does not cover: the library's own components. |
+| `scripts/build-docs.ts` | Spec → `.vitepress/openapi.json` + `public/openapi.yaml`, then VitePress. |
+
+The spec is read at build time, not in the browser: the pages import the JSON
+that `scripts/build-docs.ts` writes. `docs/public/openapi.yaml` is a verbatim
+copy, published next to the site for codegen.
 
 ### Changing what the docs say
 
-Edit `docs/openapi.yaml`. Nothing else. The page fetches the spec in the
-browser at runtime, so there is no generation step that bakes spec content into
-HTML, and no "regenerate the docs" command to forget. Push to `main` and
-`.github/workflows/docs.yml` republishes.
+Edit `docs/openapi.yaml`. Nothing else — the pages render whatever the spec
+contains, and the sidebar and the per-operation pages are generated from it, so
+a new endpoint needs no new file. Push to `main` and
+`.github/workflows/docs.yml` rebuilds and republishes.
 
-Validate before pushing (CI runs the same check, and an invalid spec means a
-blank page):
+Validate before pushing (CI runs the same check):
 
 ```sh
 npx @redocly/cli lint docs/openapi.yaml
 ```
 
-Don't use YAML anchors or merge keys (`&x`, `<<: *x`) in the spec. YAML 1.2
-parsers ignore `<<` by default, so tools like yaml@2 and js-yaml silently drop
-the merged fields (the legacy operations once lost `tags` and `deprecated`
-that way) even though Scalar renders them fine. Write shared operations out in
-full, or share through `$ref` into `components`.
-
 Warnings are expected — `operation-4xx-response` and `tag-description` fire
 across the existing spec. Keep the count from growing; don't chase it to zero.
 
-Preview locally:
+Two rules the build enforces, both of which fail loudly:
+
+- **No YAML anchors or merge keys** (`&x`, `<<: *x`). YAML 1.2 parsers ignore
+  `<<` by default, so the merged fields silently vanish for anyone generating a
+  client from the published spec — the legacy operations lost their `tags` and
+  `deprecated` that way. Write operations out in full, or share with `$ref`.
+- **Every operation needs a tag**, or it lands in an untitled sidebar group.
+
+Prefer `examples: [value]` on a schema or parameter over leaving it bare: the
+sample requests and responses are generated from the spec, and a property with
+no example renders as the word `string`.
+
+Preview locally, with hot reload:
 
 ```sh
-just docs-preview     # builds, then serves http://localhost:8000
+just docs-preview     # http://localhost:8000/spacestate/
 ```
 
-To show someone else on the tailnet, serve that port instead of publishing a
-draft:
+To show someone else on the tailnet:
 
 ```sh
 just docs-build
-python3 -m http.server 8000 --directory docs/dist &
-tailscale serve --bg --set-path /spacestate http://localhost:8000
-tailscale serve --set-path /spacestate off    # when you're done
+npx vitepress preview docs --port 8001
+tailscale serve --bg --set-path /spacestate http://localhost:8001/spacestate
+tailscale serve --https=443 --set-path /spacestate off    # when you're done
 ```
+
+The target path matters. `tailscale serve --set-path /spacestate` strips that
+prefix before proxying, while the site is built with `base: "/spacestate/"` and
+asks for its assets under it; pointing at `localhost:8001/spacestate` puts the
+prefix back. Without `--set-path` on the way out, `off` tears down every mount
+on the tailnet name, not just this one.
 
 `tailscale serve` is tailnet-only. Do not reach for `tailscale funnel` here;
 publishing is what Pages is for.
 
 ### Updating the theme from /pixel
 
-`docs/reference.html` carries a **copy** of the `/pixel` design tokens, because
-a Pages site cannot read another origin's CSS variables. `pixelbar/pixel` stays
-the source of truth; this copy has to be refreshed by hand when it changes.
+`/pixel` is a VitePress site too, so its stylesheet already maps the Pixel
+design tokens onto the `--vp-*` variables this site uses. `pixel.css` is a
+verbatim copy of that section, because a Pages site cannot read another
+origin's CSS. Regenerate it:
 
-1. Pull the current tokens out of the live site:
+```sh
+just pixel-theme
+```
 
-   ```sh
-   just pixel-tokens
-   ```
+The script fails rather than writing a truncated or empty file. Commit the
+result: the build must not depend on /pixel being up.
 
-   `:root` is light mode, `.dark` is dark mode. The script fails loudly if
-   `/pixel` restructures its theme, rather than printing the wrong block.
+`openapi.css` is the hand-written half, and covers only what Pixel has no
+opinion about — the library's components, method badges, the shadcn tokens it
+inherits from its Tailwind build. If `/pixel` adds a token you want, use it
+from there; don't copy its value into a second place.
 
-2. Copy the values into the `.light-mode` / `.dark-mode` blocks at the top of
-   `docs/reference.html`. Those blocks are deliberately verbatim Pixel token
-   names (`--bg`, `--ink-muted`, `--spectrum-cyan`, …). Only the block below
-   them maps those onto Scalar's `--scalar-*` variables — if `/pixel` adds a
-   token you want to use, add the mapping there, not a second copy of the value.
+Fonts come from Google Fonts (IBM Plex Sans/Mono, Pixelify Sans) rather than
+`/pixel`'s self-hosted copies, which are same-origin to that site only.
+Pixelify Sans is a pixel face: it is used for the site title, page titles and
+tag headings, and deliberately not for the twelve operation titles on `/all`.
 
-3. Fonts come from Google Fonts (IBM Plex Sans/Mono, Pixelify Sans) rather than
-   `/pixel`'s self-hosted copies, which are same-origin to that site only. If
-   `/pixel` changes typeface, change the `<link>` and `--scalar-font*`.
+`just docs-preview` and check both modes — the toggle is top-right.
 
-4. `just docs-preview` and check both modes — the toggle is bottom-left.
+### Bumping vitepress-openapi
 
-### Bumping Scalar
+The site leans on three pieces of the library's API, and a major version can
+move any of them. After bumping, check a per-operation page, `/all`, and both
+colour modes:
 
-The CDN script is pinned with a Subresource Integrity hash, so the version and
-the hash move together or the page silently fails to load. The command to
-recompute is in a comment next to the `<script>` tag in `docs/reference.html`.
-Check both light and dark after bumping: the theme rides on Scalar's CSS
-variable names, and a major version can rename them.
+- `useSidebar` / `usePaths` generate the nav and the per-operation routes.
+- `usePlayground().setSecuritySchemeDefaultValues` sets the credential
+  placeholders. Without it the samples invent credentials: an `http`/`bearer`
+  scheme renders as a bare `Token`, an `apiKey` as its own parameter name.
+  Never put a real key there — keys come from the Pixelbar board.
+- `operation.hiddenSlots` drops the library's inline attribution, which the
+  site footer carries instead.
 
-`docs/reference.html` also overrides some Scalar defaults, all of which a
-version bump can undo (cosmetic, not breakage):
-
-- `.explore-scalar` and `.scalar-reference-intro-clients` are hidden by CSS:
-  the "Generate SDKs & MCP" upsell and the "Client Libraries" card. Neither has
-  a config flag.
-- `hideClientButton: true` removes the "Open API Client" launcher.
-- `authentication.securitySchemes` sets placeholder credentials
-  (`<your-api-key>`, `<your-device-token>`). Without it Scalar invents fake
-  tokens in the code samples. Never put a real credential there, and keep the
-  docs from saying where keys come from: users are told to ask the Pixelbar
-  board.
-- `defaultOpenAllTags`, `expandAllParameters` and `expandAllResponses` keep
-  every section expanded.
+`openapi.css` targets the library's class names and its shadcn tokens, so
+restyled internals show up as unthemed boxes rather than as a build failure.
 
 ### Publishing
 
@@ -124,7 +132,7 @@ The service itself does **not** serve the docs. `/docs` on
 `spacestate.pixelbar.nl` is deliberately not a route: the spec is static and
 Pages hosts it for free, without the API needing to ship HTML.
 
-One consequence worth knowing: Scalar's "Test Request" button fires a real
+One consequence worth knowing: the "Try it out" button fires a real
 cross-origin request from `pixelbar.nl` at `spacestate.pixelbar.nl`. The `GET`
 endpoints send `Access-Control-Allow-Origin: *` and work; `POST /api/v1/state`
 does not set CORS headers, so trying it from the docs page fails in the

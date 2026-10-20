@@ -273,7 +273,10 @@ paths:
           required: true
           description: The device's token, issued by the Pixelbar board.
           schema: { type: string, minLength: 1 }
-        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - name: user
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, examples: [your-name] }
         - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
       responses:
         "200":
@@ -285,6 +288,7 @@ paths:
               schema:
                 type: string
                 enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+                examples: [SUCCESS]
         "302":
           description: Invalid parameters or unknown token/IP.
           headers:
@@ -310,7 +314,10 @@ paths:
           required: true
           description: The device's token, issued by the Pixelbar board.
           schema: { type: string, minLength: 1 }
-        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - name: user
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, examples: [your-name] }
         - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
       responses:
         "200":
@@ -322,6 +329,7 @@ paths:
               schema:
                 type: string
                 enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+                examples: [SUCCESS]
         "302":
           description: Invalid parameters or unknown token/IP.
           headers:
@@ -348,7 +356,10 @@ paths:
           required: true
           description: The device's token, issued by the Pixelbar board.
           schema: { type: string, minLength: 1 }
-        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - name: user
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, examples: [your-name] }
         - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
       responses:
         "200":
@@ -360,6 +371,7 @@ paths:
               schema:
                 type: string
                 enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+                examples: [SUCCESS]
         "302":
           description: Invalid parameters or unknown token/IP.
           headers:
@@ -385,7 +397,10 @@ paths:
           required: true
           description: The device's token, issued by the Pixelbar board.
           schema: { type: string, minLength: 1 }
-        - { name: user, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - name: user
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, examples: [your-name] }
         - { name: state, in: query, required: true, schema: { $ref: "#/components/schemas/SpaceState" } }
       responses:
         "200":
@@ -397,6 +412,7 @@ paths:
               schema:
                 type: string
                 enum: [SUCCESS, ALLREADY TOGGLED TO THIS STATE]
+                examples: [SUCCESS]
         "302":
           description: Invalid parameters or unknown token/IP.
           headers:
@@ -442,39 +458,66 @@ components:
     SpaceState:
       type: string
       enum: [open, closed]
+      examples: [open]
     ChangeSource:
       type: string
       description: "`api` for `/api/v1`, `legacy` for the compatibility shim."
       enum: [api, legacy]
+      examples: [api]
     CurrentState:
       type: object
       required: [state, since]
       properties:
         state: { $ref: "#/components/schemas/SpaceState" }
-        since: { type: string, format: date-time, description: When the state last changed. }
+        since:
+          type: string
+          format: date-time
+          description: When the state last changed.
+          examples: ["2026-10-18T19:04:11.000Z"]
     StateChangeRequest:
       type: object
       required: [state, user, method]
       properties:
         state: { $ref: "#/components/schemas/SpaceState" }
-        user: { type: string, minLength: 1, description: Who triggered the change. }
-        method: { type: string, minLength: 1, description: "How it was triggered (e.g. button, web)." }
+        user:
+          type: string
+          minLength: 1
+          description: Who triggered the change.
+          examples: [your-name]
+        method:
+          type: string
+          minLength: 1
+          description: "How it was triggered (e.g. button, web)."
+          examples: [button]
     StateChangeResponse:
       type: object
       required: [state, recordedAt]
       properties:
         state: { $ref: "#/components/schemas/SpaceState" }
-        recordedAt: { type: string, format: date-time }
+        recordedAt:
+          type: string
+          format: date-time
+          examples: ["2026-10-18T19:04:11.000Z"]
     HistoryEntry:
       type: object
       required: [state, user, method, source, changedAt]
       properties:
         state: { $ref: "#/components/schemas/SpaceState" }
-        user: { type: string }
-        method: { type: string }
-        deviceShortname: { type: string, description: Set for legacy device changes. }
+        user:
+          type: string
+          examples: [your-name]
+        method:
+          type: string
+          examples: [button]
+        deviceShortname:
+          type: string
+          description: Set for legacy device changes.
+          examples: [frontdoor]
         source: { $ref: "#/components/schemas/ChangeSource" }
-        changedAt: { type: string, format: date-time }
+        changedAt:
+          type: string
+          format: date-time
+          examples: ["2026-10-18T19:04:11.000Z"]
     HistoryPage:
       type: object
       required: [items]
@@ -485,6 +528,7 @@ components:
         continuationToken:
           type: string
           description: Present when more results exist; pass back as `continuationToken`.
+          examples: ["1!52!RGF0ZQ--"]
     ValidationError:
       type: object
       required: [error, details]
@@ -503,8 +547,8 @@ components:
       additionalProperties: true
       properties:
         api: { type: string, example: "0.13" }
-        space: { type: string }
-        url: { type: string, format: uri }
+        space: { type: string, examples: [Pixelbar] }
+        url: { type: string, format: uri, examples: ["https://pixelbar.nl"] }
         logo: { type: string, format: uri }
         location: { type: object, additionalProperties: true }
         contact: { type: object, additionalProperties: true }

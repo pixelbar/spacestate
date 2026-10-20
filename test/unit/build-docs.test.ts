@@ -1,32 +1,34 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { beforeAll, describe, expect, it } from "vitest";
 
-let out: string;
-
+/**
+ * The site is built from docs/openapi.yaml by VitePress, which is too slow to
+ * run here. These cover the part that turns the spec into the site's inputs —
+ * and the spec hygiene that silently breaks other toolchains.
+ */
 beforeAll(() => {
-  out = mkdtempSync(join(tmpdir(), "spacestate-docs-"));
-  execFileSync("npx", ["tsx", "scripts/build-docs.ts", "--out", out], { stdio: "pipe" });
-});
-
-afterAll(() => {
-  rmSync(out, { recursive: true, force: true });
+  execFileSync("npx", ["tsx", "scripts/build-docs.ts", "--prepare-only"], { stdio: "pipe" });
 });
 
 describe("docs site build", () => {
-  it("emits the page and the spec it loads", () => {
-    const page = readFileSync(join(out, "index.html"), "utf8");
-    const spec = readFileSync(join(out, "openapi.yaml"), "utf8");
-
-    expect(page).toContain('url: "./openapi.yaml"');
-    expect(spec).toMatch(/^openapi: 3\.1\.\d/m);
-  });
-
   it("ships the spec verbatim, so editing it is the whole update", () => {
-    expect(readFileSync(join(out, "openapi.yaml"), "utf8")).toBe(
+    expect(readFileSync("docs/public/openapi.yaml", "utf8")).toBe(
       readFileSync("docs/openapi.yaml", "utf8"),
     );
+  });
+
+  it("gives every operation a tag, so none lands in an untitled group", () => {
+    const spec = JSON.parse(readFileSync("docs/.vitepress/openapi.json", "utf8"));
+    const operations = Object.values(spec.paths as Record<string, Record<string, { tags?: string[] }>>)
+      .flatMap((item) => Object.entries(item))
+      .filter(([method]) => method !== "parameters");
+
+    expect(operations.length).toBeGreaterThan(0);
+    for (const [, operation] of operations) expect(operation.tags ?? []).not.toHaveLength(0);
+  });
+
+  it("rejects YAML merge keys, which most parsers drop on the floor", () => {
+    expect(readFileSync("docs/openapi.yaml", "utf8")).not.toMatch(/^\s*(<<:\s*\*|[\w-]+:\s*&)/m);
   });
 });
