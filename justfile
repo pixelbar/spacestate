@@ -51,6 +51,20 @@ pixel-theme:
 check-changelog *args:
     npm run --silent check-changelog -- {{args}}
 
+# Keeps both sides' entries when that is clearly right, and says why when it isn't.
+# Run with node, like the Changelog merge workflow, so it needs no install.
+# In a merge or rebase that stopped on CHANGELOG.md: resolve it and stage the file.
+changelog-merge:
+    node scripts/merge-changelog.ts --git
+
+# Undo with: git config --unset merge.changelog.driver
+# Let git do `just changelog-merge` by itself on a CHANGELOG.md conflict (this clone only).
+changelog-merge-driver:
+    git config merge.changelog.name "Keep both sides' CHANGELOG [Unreleased] entries"
+    git config merge.changelog.driver "node scripts/merge-changelog.ts %O %A %B"
+    grep -qxF 'CHANGELOG.md merge=changelog' "$(git rev-parse --git-path info/attributes)" 2>/dev/null || \
+        echo 'CHANGELOG.md merge=changelog' >> "$(git rev-parse --git-path info/attributes)"
+
 # Move CHANGELOG [Unreleased] into a version, e.g. `just bump --dry-run`.
 bump *args:
     npm run --silent bump -- {{args}}

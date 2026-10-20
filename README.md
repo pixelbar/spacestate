@@ -144,6 +144,14 @@ rejected writes.
 `CHANGELOG.md` entry under `## [Unreleased]` (label a PR `skip-changelog`
 for pure chores).
 
+`.github/workflows/changelog-merge.yml` keeps open PRs mergeable: when `main`'s
+`CHANGELOG.md` changes (and after a release empties `[Unreleased]`), it merges
+`main` into every open PR that edits the file and, if `CHANGELOG.md` is the only
+conflict, resolves it by keeping both sides' entries and pushes that merge.
+It comments on the PR either way, and leaves anything it can't resolve safely
+to a person. `just changelog-merge` does the same in a stopped local merge or
+rebase.
+
 Releases are cut from `main` via Actions → Release → Run workflow. It turns
 `[Unreleased]` into a dated version (`Added` → minor, anything else → patch,
 never 1.0 automatically), bumps `package.json`/`package-lock.json` and the
@@ -159,6 +167,23 @@ to GitHub Pages from the same commit — publishing docs needs no `prod`
 approval, and a failed deploy does not hold the site back.
 The bot pushes to `main`, so if branch protection is on, allow
 `github-actions[bot]` to bypass it.
+
+### Changelog conflicts
+
+The changelog merge workflow works out of the box, with one caveat: pushes made
+with `GITHUB_TOKEN` don't start CI, and can't carry workflow changes from `main`
+into a branch. A GitHub App fixes both. Create one on the org with **Contents**,
+**Pull requests** and **Workflows**: read and write, install it on
+`pixelbar/spacestate`, then:
+
+```sh
+gh variable set CHANGELOG_BOT_CLIENT_ID --body "<the App's client ID>"
+gh secret set CHANGELOG_BOT_PRIVATE_KEY < app-private-key.pem
+```
+
+Until that exists, the workflow pushes with `GITHUB_TOKEN`, its PR comment says
+CI hasn't run on the merge (push again, or close and reopen the PR), and a merge
+that would bring in workflow changes is refused.
 
 ### One-time deploy setup
 
