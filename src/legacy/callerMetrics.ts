@@ -1,6 +1,5 @@
 import * as Sentry from "@sentry/node";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { resolveClientIp } from "../auth/legacyToken.js";
 
 /** Headers whose values are credentials — recorded as present, never with their value. */
 const SECRET_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "x-api-key"]);
@@ -34,12 +33,29 @@ function redactedQuery(request: FastifyRequest): Record<string, string> {
   return out;
 }
 
+/**
+ * Best guess at the address the request came from: the first X-Forwarded-For
+ * hop when it says something the socket doesn't. Observability only — nothing
+ * authenticates or authorizes on this, and a caller can set the header to
+ * whatever it likes, so treat it as a hint and `ip` as the fact. Fastify's
+ * `request.ip` is the raw socket address because `trustProxy` is off.
+ */
+function forwardedClientIp(request: FastifyRequest): string {
+  const forwardedHeader = request.headers["x-forwarded-for"];
+  const forwarded = Array.isArray(forwardedHeader) ? forwardedHeader[0] : forwardedHeader;
+  const forwardedIp = forwarded?.split(",")[0]?.trim();
+  if (forwardedIp && forwardedIp !== request.ip) {
+    return forwardedIp;
+  }
+  return request.ip;
+}
+
 /** Everything we can learn about the caller from the request alone. */
 function callerAttributes(request: FastifyRequest): Record<string, string | number | boolean> {
   const h = request.headers;
   const attrs: Record<string, string | number | boolean | undefined> = {
     ip: request.ip,
-    client_ip: resolveClientIp(request),
+    client_ip: forwardedClientIp(request),
     remote_port: request.socket.remotePort,
     x_forwarded_for: headerValue(h["x-forwarded-for"]),
     x_real_ip: headerValue(h["x-real-ip"]),

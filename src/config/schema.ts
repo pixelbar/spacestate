@@ -37,7 +37,12 @@ const apiKeyEntrySchema = z.object({
 const legacyDeviceSchema = z.object({
   shortname: z.string(),
   method: z.string(),
-  ip: z.string(),
+  /**
+   * @deprecated Ignored. The legacy toggle routes authenticate on the token
+   * alone — there is no per-device IP allowlist any more. Still accepted so
+   * deployed blobs that carry it keep parsing; drop it whenever convenient.
+   */
+  ip: z.string().optional(),
   token: z.string().min(1),
 });
 

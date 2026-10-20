@@ -18,6 +18,11 @@ const toggleQuerySchema = z.object({
  * not behavior worth preserving. Both now share one handler, for GET and POST
  * (params always come from the query string, as in the PHP).
  *
+ * The `token` is the whole credential. The legacy per-device IP allowlist, and
+ * the X-Forwarded-For quirk that fed it, are gone — a valid token works from
+ * anywhere. Carrying that token in the URL is why these routes stay deprecated
+ * in favour of `POST /api/v1/state`.
+ *
  * Every outcome is logged to Sentry Logs under the `legacy.togglestate`
  * prefix with structured attributes (never the token). Unexpected failures
  * are logged and rethrown; the shared error handler captures the exception
@@ -53,10 +58,10 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
       }
 
       const { token, user, state } = parsedQuery.data;
-      const auth = authenticateLegacyRequest(legacyStore.get(), request, token);
+      const auth = authenticateLegacyRequest(legacyStore.get(), token);
       if (!auth) {
-        request.log.warn({ user, state }, "legacy state change rejected: unknown token or IP");
-        Sentry.logger.warn("legacy.togglestate rejected: unknown token or IP", {
+        request.log.warn({ user, state }, "legacy state change rejected: unknown token");
+        Sentry.logger.warn("legacy.togglestate rejected: unknown token", {
           ...base,
           user,
           state,

@@ -1,10 +1,11 @@
 # Sample legacy device credentials for local development and tests.
+# The token is the whole credential: there is no per-device IP allowlist. An
+# `ip:` left over from the old format is still accepted and ignored, so live
+# blobs keep working — drop it whenever convenient.
 legacyDevices:
   - shortname: "Pixelbar Rotterdam"
     method: "Manual Switch"
-    ip: "203.0.113.10"
     token: "dev-legacy-token-manual"
   - shortname: "Wireless Spacestate Button"
     method: "Spacestate Switch"
-    ip: "203.0.113.11"
     token: "dev-legacy-token-button"

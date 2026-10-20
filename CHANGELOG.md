@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- The legacy toggle endpoints (`/togglestate.php`, `/togglebaker.php`) authenticate on the device token alone. The per-device IP allowlist and the `X-Forwarded-For` resolution behind it are gone, so a valid token is accepted from any address and no request header takes part in the decision — state control is now credential-only on every path, as `POST /api/v1/state` already was. The `ip` field in `legacy.yaml` is **ignored**; it is still accepted, so deployed config blobs keep parsing and the field can be removed whenever convenient. Caller IPs (socket and forwarded) are still logged on every legacy hit, for observability only.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added
