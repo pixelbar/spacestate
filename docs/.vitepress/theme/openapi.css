@@ -1,0 +1,307 @@
+/* ===========================================================================
+   Pixel -> vitepress-openapi bridge.
+   pixel-extract.css already ports pixelbar.nl/pixel onto --vp-c-*; this file
+   only covers what vitepress-openapi adds on top (OA* components, shadcn
+   tokens, method badges).
+   =========================================================================== */
+
+/* Pixelify Sans is a pixel face: title only. Pixel uses it for h1+h2, but an
+   API reference has an h2 per operation, so pull h2/h3 back to IBM Plex. */
+.vp-doc h2 {
+  font: 600 28px/34px var(--font-sans);
+  letter-spacing: -0.01em;
+}
+.vp-doc h3 {
+  font: 600 20px/28px var(--font-sans);
+}
+.VPNavBarTitle .title {
+  font: 600 22px/1 var(--font-display);
+}
+
+/* --- shadcn tokens vitepress-openapi inherits from its Tailwind build.
+       Values are "H S% L%" triplets consumed as hsl(var(--x)). ------------- */
+:root {
+  --background: 240 20% 98%;
+  --foreground: 240 41% 5%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 41% 5%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 41% 5%;
+  --primary: 240 41% 5%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 23% 94%;
+  --secondary-foreground: 240 41% 5%;
+  --muted: 240 23% 94%;
+  --muted-foreground: 240 16% 35%;
+  --accent: 240 23% 94%;
+  --accent-foreground: 240 41% 5%;
+  --destructive: 349 85% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 240 32% 87%;
+  --ring: 223 76% 48%;
+  --radius: 2px;
+}
+.dark {
+  --background: 240 29% 3%;
+  --foreground: 240 60% 97%;
+  --card: 240 26% 7%;
+  --card-foreground: 240 60% 97%;
+  --popover: 240 26% 7%;
+  --popover-foreground: 240 60% 97%;
+  --primary: 0 0% 100%;
+  --primary-foreground: 240 29% 3%;
+  --secondary: 240 25% 12%;
+  --secondary-foreground: 240 60% 97%;
+  --muted: 240 25% 12%;
+  --muted-foreground: 240 23% 70%;
+  --accent: 240 25% 12%;
+  --accent-foreground: 240 60% 97%;
+  --destructive: 351 100% 62%;
+  --destructive-foreground: 240 29% 3%;
+  --input: 240 21% 22%;
+  --ring: 187 100% 50%;
+}
+
+/* Square system: 2px corners, 1px borders, everywhere OA renders. */
+.vp-doc [class*='OA'],
+.vp-doc [class*='OA'] *,
+.VPDoc [data-reka-popper-content-wrapper] *,
+[role='dialog'] * {
+  border-radius: var(--radius-1) !important;
+}
+
+/* --- HTTP method badges -> Pixel spectrum, mono, bordered ---------------- */
+[class*='OAMethodBadge--'] {
+  --m: var(--ink-muted);
+  background: transparent !important;
+  border: 1px solid var(--m) !important;
+  color: var(--m) !important;
+  font: 500 12px/16px var(--font-mono) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px !important;
+}
+.OAMethodBadge--get     { --m: var(--spectrum-cyan); }
+.OAMethodBadge--post    { --m: var(--spectrum-green); }
+.OAMethodBadge--put     { --m: var(--spectrum-blue); }
+.OAMethodBadge--patch   { --m: var(--spectrum-violet); }
+.OAMethodBadge--delete  { --m: var(--spectrum-red); }
+.OAMethodBadge--head    { --m: var(--spectrum-magenta); }
+.OAMethodBadge--options { --m: var(--spectrum-orange); }
+
+/* Sidebar operation links get the same treatment, but compact. */
+.VPSidebarItem .OAMethodBadge,
+.VPSidebar [class*='OAMethodBadge--'] {
+  font-size: 10px !important;
+  padding: 1px 4px !important;
+}
+
+/* Sidebar: operation rows in mono, like Pixel's command list. */
+.VPSidebarItem.level-1 .link .text,
+.VPSidebarItem.level-2 .link .text {
+  font-family: var(--font-mono);
+  font-size: 13px !important;
+}
+
+/* --- endpoint strip (OAPathEndpoint) ------------------------------------- */
+.OAPathEndpoint,
+.vp-doc div:has(> div > [class*='OAMethodBadge--']) {
+  font-family: var(--font-mono);
+}
+.vp-doc .bg-muted {
+  background: var(--surface-raised) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* --- generic OA surfaces: squared, hairlined, Pixel surfaces ------------- */
+.vp-doc .bg-card,
+.vp-doc .bg-background,
+.vp-doc .bg-popover {
+  background: var(--surface) !important;
+}
+.vp-doc .border,
+.vp-doc .border-t,
+.vp-doc .border-b,
+.vp-doc .border-l,
+.vp-doc .border-r {
+  border-color: var(--border) !important;
+}
+.vp-doc .text-muted-foreground { color: var(--ink-muted) !important; }
+.vp-doc .text-foreground { color: var(--ink) !important; }
+
+/* Section eyebrows (Parameters / Responses / Request Body headings) */
+.vp-doc .OAOperation h3,
+.vp-doc h4.OAHeading {
+  font: 500 12px/16px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* --- tabs (response codes, code samples) -> Pixel underline tabs -------- */
+[role='tablist'] {
+  border-bottom: 1px solid var(--border) !important;
+  gap: var(--space-2);
+}
+[role='tab'] {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  color: var(--ink-muted) !important;
+  font: 500 12px/24px var(--font-mono) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: none !important;
+}
+[role='tab']:hover { color: var(--ink) !important; }
+[role='tab'][data-state='active'],
+[role='tab'][aria-selected='true'] {
+  color: var(--ink) !important;
+  border-bottom-color: var(--spectrum-magenta) !important;
+}
+
+/* --- buttons inside OA (Try it / send) ---------------------------------- */
+.vp-doc button.bg-primary,
+.vp-doc .OAPlayground button[type='submit'] {
+  background: var(--core) !important;
+  color: var(--on-core) !important;
+  border: 0 !important;
+  font: 600 14px/1 var(--font-sans) !important;
+  box-shadow: var(--glow-core);
+}
+
+/* --- code blocks: Pixel's labelled bar look ----------------------------- */
+.vp-doc div[class*='language-'] {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* Schema / JSON viewer in Pixel mono + surfaces */
+.vjs-tree,
+.vjs-tree-node {
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+}
+.vjs-key { color: var(--spectrum-cyan) !important; }
+.vjs-value-string { color: var(--spectrum-yellow) !important; }
+.vjs-value-number { color: var(--spectrum-green) !important; }
+.vjs-value-boolean { color: var(--spectrum-magenta) !important; }
+.vjs-value-null { color: var(--ink-faint) !important; }
+
+/* Required markers / deprecated badges in spectrum red */
+.vp-doc .text-destructive,
+.vp-doc [class*='destructive'] {
+  color: var(--spectrum-red) !important;
+}
+
+/* The magenta accent bar Pixel puts on active nav, applied to OA tag groups */
+.vp-doc h2 {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-6);
+  margin-top: var(--space-12);
+}
+.vp-doc h2::after {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 3px;
+  margin-top: var(--space-2);
+  background: var(--spectrum-magenta);
+}
+
+/* Footer branding from vitepress-openapi */
+.OAFooter { color: var(--ink-faint); font-size: 13px; }
+
+/* Full-bleed: an API reference wants the width */
+.VPDoc .container { max-width: 1152px !important; }
+.VPDoc.has-aside .content-container { max-width: 100% !important; }
+
+/* --- sidebar operation rows: badge in a fixed gutter, text aligned -------
+   Default layout lets the wrapped summary run under the method badge. */
+.VPSidebarItem .link > .link-text,
+.VPSidebarItem .item > .text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.VPSidebar [class*='OAMethodBadge--'] {
+  flex: 0 0 auto;
+  min-width: 42px;
+  text-align: center;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+.VPSidebar .OASidebarItem__text,
+.VPSidebar .link .text > span:last-child {
+  flex: 1 1 auto;
+}
+
+/* Deprecated operations read as struck-through in the sidebar, as in Scalar. */
+.VPSidebar a[href*='legacy'] .text,
+.VPSidebar a[href*='Legacy'] .text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--ink-faint) !important;
+}
+.VPSidebar a[href*='legacy'] [class*='OAMethodBadge--'],
+.VPSidebar a[href*='Legacy'] [class*='OAMethodBadge--'] {
+  text-decoration: none;
+  opacity: 0.7;
+}
+
+/* Deprecated badge on the operation page itself */
+.vp-doc [class*='OAHeaderBadges'] [class*='deprecated'],
+.vp-doc .OABadge--deprecated {
+  border: 1px solid var(--spectrum-red) !important;
+  color: var(--spectrum-red) !important;
+  background: transparent !important;
+  font: 500 11px/16px var(--font-mono) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Pixel reserves 24px at the top of every code block for its language bar.
+   vitepress-openapi renders spec descriptions through its own markdown-it
+   pipeline, which emits `div.language-x` but no `span.lang` — so that space
+   would sit empty. Only reserve it where a bar is actually rendered. */
+.vp-doc div[class*='language-']:not(:has(> span.lang)) {
+  padding-top: 0;
+}
+
+/* --- single-page view: Pixelify is a pixel face, so keep it for the spec
+       title and the five tag headings only. The twelve operation titles drop
+       to IBM Plex for readability. vitepress-openapi marks operation headings
+       with a `scroll-m-*` class, which is the stable hook.
+       (On per-operation pages the title stays Pixelify — it's the page title.) */
+.oa-single-page .vp-doc h1[class*='scroll-m-'] {
+  font: 600 30px/36px var(--font-sans);
+  letter-spacing: -0.01em;
+  margin-top: var(--space-12);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+.oa-single-page .vp-doc h1[class*='scroll-m-']::after {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 3px;
+  margin-top: var(--space-2);
+  background: var(--spectrum-magenta);
+}
+/* Tag headings: Pixelify, as Pixel does for section headings. */
+.oa-single-page .vp-doc h1:not([class*='scroll-m-']) {
+  font: 500 36px/42px var(--font-display);
+}
+/* Deprecated operations are struck through by the library; soften them too. */
+.vp-doc h1.line-through {
+  color: var(--ink-muted);
+  text-decoration-thickness: 2px;
+}
+
+/* Code samples sit in the narrow right-hand column, and a request URL with
+   three query parameters is wider than it. Wrap rather than scroll: a sample
+   you have to drag sideways to read is a sample nobody reads. */
+.OAPathContentEnd div[class*='language-'] code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

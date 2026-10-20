@@ -13,8 +13,24 @@ covers and why.
 ## API docs
 
 The HTTP API is described by an OpenAPI 3.1 spec: [`docs/openapi.yaml`](docs/openapi.yaml)
-(validate with `npx @redocly/cli lint docs/openapi.yaml`). Paste it into
-https://editor.swagger.io or run `npx @redocly/cli preview-docs docs/openapi.yaml` to browse it.
+(validate with `npx @redocly/cli lint docs/openapi.yaml`).
+
+It is published as a browsable reference at **<https://pixelbar.nl/spacestate/>**
+([vitepress-openapi](https://github.com/enzonotario/vitepress-openapi), themed
+to match [pixelbar.nl/pixel](https://pixelbar.nl/pixel)), with the raw spec
+alongside it at <https://pixelbar.nl/spacestate/openapi.yaml>.
+
+Editing `docs/openapi.yaml` is the whole update: the pages, the sidebar and a
+page per operation are all generated from it. A push to `main` rebuilds and
+republishes (`.github/workflows/docs.yml`).
+
+```sh
+just docs-preview   # hot-reloading preview on http://localhost:8000/spacestate/
+just docs-build     # build only, into docs/.vitepress/dist/
+```
+
+See [`AGENTS.md`](AGENTS.md) for refreshing the theme from `/pixel`, previewing
+over Tailscale, and the two spec rules the build enforces.
 
 ## Local development
 

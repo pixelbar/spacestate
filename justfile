@@ -34,6 +34,19 @@ check: typecheck build test
 azurite:
     docker compose up -d azurite
 
+# Build the API reference site into docs/.vitepress/dist/ (what Pages publishes).
+docs-build *args:
+    npm run --silent docs:build -- {{args}}
+
+# Preview on http://localhost:8000/spacestate/ with hot reload (Ctrl-C to stop).
+docs-preview:
+    @npm run --silent docs:build -- --prepare-only
+    @npx vitepress dev docs --port 8000
+
+# Refresh the copied pixelbar.nl/pixel theme (see AGENTS.md).
+pixel-theme:
+    @./scripts/pixel-theme.sh
+
 # Fail unless CHANGELOG.md is updated, e.g. `just check-changelog --base origin/main`.
 check-changelog *args:
     npm run --silent check-changelog -- {{args}}

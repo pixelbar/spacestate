@@ -17,6 +17,7 @@
     "config": "tsx scripts/config.ts",
     "api-key": "tsx scripts/generate-api-key.ts",
     "check-changelog": "tsx scripts/check-changelog.ts",
+    "docs:build": "tsx scripts/build-docs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -36,6 +37,9 @@
     "ajv-formats": "^3.0.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.4"
+    "vitepress": "^1.6.4",
+    "vitepress-openapi": "^0.2.5",
+    "vitest": "^5.0.4",
+    "yaml": "^2.9.1"
   }
 }

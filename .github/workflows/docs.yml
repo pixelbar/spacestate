@@ -1,0 +1,85 @@
+name: Docs site
+
+# Publishes the API reference (docs/openapi.yaml rendered by VitePress) to
+# GitHub Pages at https://pixelbar.nl/spacestate/. A push to main that touches
+# the spec rebuilds and republishes it; nothing else needs editing. Pull
+# requests build the site to catch a broken spec, but do not publish.
+
+on:
+  push:
+    branches: [main]
+    # Kept in step with the pull_request list below by hand: GitHub Actions
+    # does not support YAML anchors.
+    paths:
+      - "docs/**"
+      - "scripts/build-docs.ts"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "scripts/build-docs.ts"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Least privilege: building only reads the repo. The deploy job asks for what
+# Pages needs.
+permissions:
+  contents: read
+
+# One publish at a time, and never cancel one halfway. PR checks cancel older runs.
+concurrency:
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - run: just install
+
+      # The page renders whatever the spec says, so an invalid spec is a broken
+      # site. Catch it here rather than in the browser.
+      - name: Lint the spec
+        run: npx --yes @redocly/cli@2 lint docs/openapi.yaml
+
+      - name: Build
+        run: just docs-build
+
+      - name: Upload the site for Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

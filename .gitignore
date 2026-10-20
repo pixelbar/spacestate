@@ -11,3 +11,8 @@ dist/
 *.tfplan
 .terraform.tfstate.lock.info
 config/prod/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+# Generated from docs/openapi.yaml by scripts/build-docs.ts.
+docs/.vitepress/openapi.json
+docs/public/openapi.yaml
