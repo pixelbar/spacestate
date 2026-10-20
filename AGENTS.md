@@ -143,6 +143,28 @@ endpoints send `Access-Control-Allow-Origin: *` and work; `POST /api/v1/state`
 does not set CORS headers, so trying it from the docs page fails in the
 browser. Curl and the code samples are unaffected.
 
+## Legacy parity contract tests
+
+`just test-contract` proves this service's outputs still match the legacy PHP
+system's. `test/contract/README.md` is the reference: what "identical" means
+per endpoint, which headers must match, and every difference that is there on
+purpose. Three things are easy to get wrong:
+
+- **Never call `togglestate.php` or `togglebaker.php` on a live host**, with
+  or without a token. They change the real space status. Only the read
+  endpoints were recorded, `GET`-only, and no fixture contains a token.
+- **The fixtures under `test/fixtures/legacy/` have no trailing newline**,
+  because PHP's `echo` emitted none and `/spacestate.php` is compared
+  byte-for-byte. An editor that adds one fails the suite.
+- **Editing `config/spaceapi.sample.json` (or the production blob) can break
+  the parity tests**, which is the point — the SpaceAPI document is config
+  plus two live booleans, so a config edit is a change to the public output.
+  Re-run `just test-contract` after touching it.
+
+Every intentional difference in that README is backed by an assertion, so the
+list cannot quietly go stale: if a difference disappears, a test fails and the
+README is what needs editing.
+
 ## Changelog
 
 Every PR needs a `CHANGELOG.md` entry under `[Unreleased]`, enforced by CI. Add
