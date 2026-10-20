@@ -12,6 +12,9 @@ import {
 import { createConfigSource } from "./config/sources/index.js";
 import { HistoryService } from "./domain/history/service.js";
 import { StateService } from "./domain/state/service.js";
+import { WebhookDispatcher } from "./domain/webhooks/dispatcher.js";
+import { WebhookRegistry } from "./domain/webhooks/registry.js";
+import { policyFromEnv } from "./domain/webhooks/targetPolicy.js";
 import { legacyPlugin } from "./legacy/plugin.js";
 import { healthPlugin } from "./plugins/health.js";
 import { registerErrorHandler } from "./plugins/errorHandler.js";
@@ -24,6 +27,7 @@ export interface BuiltApp {
   spaceApiStore: ConfigStore<SpaceApiConfig>;
   apiKeyStore: ConfigStore<ApiKeysConfig>;
   legacyStore: ConfigStore<LegacyConfig>;
+  webhookRegistry: WebhookRegistry;
 }
 
 export async function buildApp(): Promise<BuiltApp> {
@@ -40,23 +44,46 @@ export async function buildApp(): Promise<BuiltApp> {
     yamlParser(legacyConfigSchema),
   );
 
+  // Written by the app (POST /api/v1/webhooks), so unlike the stores above it
+  // lives in its own blob container the identity may write to. A missing
+  // document just means no webhooks yet.
+  const webhookRegistry = await WebhookRegistry.create(
+    createConfigSource(process.env.WEBHOOKS_CONFIG_SOURCE ?? "file://./config/prod/webhooks.yaml"),
+  );
+  const webhookPolicy = policyFromEnv(process.env);
+  const webhookDispatcher = new WebhookDispatcher(webhookRegistry, { policy: webhookPolicy });
+
   const tableClients = createTableClients();
   const historyStore = new TableHistoryStore(tableClients.stateHistory);
   const currentStateStore = new TableCurrentStateStore(tableClients.currentState);
 
   const stateService = new StateService(currentStateStore, historyStore);
   const historyService = new HistoryService(historyStore);
+  stateService.onChange((event) => webhookDispatcher.notify(event));
 
   const app = Fastify({ logger: true });
 
   registerErrorHandler(app);
   await app.register(healthPlugin);
-  await app.register(apiPlugin, { spaceApiStore, apiKeyStore, stateService, historyService });
+  await app.register(apiPlugin, {
+    spaceApiStore,
+    apiKeyStore,
+    stateService,
+    historyService,
+    webhookRegistry,
+    webhookPolicy,
+  });
   await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });
 
   app.addHook("onClose", async () => {
-    await Promise.all([spaceApiStore.close(), apiKeyStore.close(), legacyStore.close()]);
+    webhookRegistry.close();
+    await Promise.all([
+      spaceApiStore.close(),
+      apiKeyStore.close(),
+      legacyStore.close(),
+      webhookDispatcher.close(),
+    ]);
   });
 
-  return { app, spaceApiStore, apiKeyStore, legacyStore };
+  return { app, spaceApiStore, apiKeyStore, legacyStore, webhookRegistry };
 }
