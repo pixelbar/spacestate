@@ -10,6 +10,9 @@ dist/
 *.tfstate.*
 *.tfplan
 .terraform.tfstate.lock.info
+# infra/sentry.auto.tfvars holds the Sentry DSN (README: "Observability").
+*.tfvars
+*.tfvars.json
 config/prod/
 docs/.vitepress/dist/
 docs/.vitepress/cache/

@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- A `terraform apply` that forgets the Sentry DSN now fails instead of silently deploying with error reporting off: `sentry_dsn` is validated against the new `sentry_enabled` variable (default `true`), so an empty DSN stops the plan with a message naming the variable. Running without Sentry stays possible but has to be deliberate — `-var="sentry_enabled=false"`, which drops the `sentry-dsn` secret and the `SENTRY_DSN` env var. A `sentry_enabled` output says which way the stack stands, and `*.tfvars` is now gitignored so `infra/sentry.auto.tfvars` can hold the DSN for every apply (README: "Observability").
+- The app says at startup whether it reports to Sentry: `initSentry()` returns that, the `spacestate started` log carries `sentryEnabled`, and a start without a DSN also logs a `Sentry is disabled` warning. A blank `SENTRY_DSN` counts as unset. The DSN itself is never logged.
 - The legacy toggle endpoints (`/togglestate.php`, `/togglebaker.php`) authenticate on the device token alone. The per-device IP allowlist and the `X-Forwarded-For` resolution behind it are gone, so a valid token is accepted from any address and no request header takes part in the decision — state control is now credential-only on every path, as `POST /api/v1/state` already was. The `ip` field in `legacy.yaml` is **ignored**; it is still accepted, so deployed config blobs keep parsing and the field can be removed whenever convenient. Caller IPs (socket and forwarded) are still logged on every legacy hit, for observability only.
 
 ## [0.5.0] - 2026-10-20
