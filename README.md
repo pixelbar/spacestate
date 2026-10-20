@@ -137,6 +137,15 @@ state-service failures, startup crashes, and every `request.log`/`app.log`
 line (as Sentry Logs, via `pinoIntegration`), including state changes and
 rejected writes.
 
+Credentials never go with it. The legacy endpoints take their device token in
+the query string, so every URL is redacted on the way out by
+`src/observability/redact.ts` — the whole query string on the legacy routes,
+`token`-style parameters elsewhere. It is wired into the pino request
+serializer, the error handler, the legacy caller metrics and Sentry's
+`beforeSend`/`beforeSendSpan`/`beforeSendLog` hooks, and unknown paths answer a
+generic `404 {"error":"not_found"}` instead of echoing the URL. Anything new
+that logs or reports a URL should use that helper.
+
 ## CI/CD
 
 `.github/workflows/ci.yml` typechecks, builds, runs unit + integration tests
