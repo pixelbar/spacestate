@@ -21,8 +21,10 @@ to match [pixelbar.nl/pixel](https://pixelbar.nl/pixel)), with the raw spec
 alongside it at <https://pixelbar.nl/spacestate/openapi.yaml>.
 
 Editing `docs/openapi.yaml` is the whole update: the pages, the sidebar and a
-page per operation are all generated from it. A push to `main` rebuilds and
-republishes (`.github/workflows/docs.yml`).
+page per operation are all generated from it. Cutting a release republishes the
+site from the released commit, so the live reference is the released API;
+`.github/workflows/docs.yml` builds it on every PR that touches it, and can
+republish by hand (Actions → Docs site → Run workflow).
 
 ```sh
 just docs-preview   # hot-reloading preview on http://localhost:8000/spacestate/
@@ -144,13 +146,17 @@ for pure chores).
 
 Releases are cut from `main` via Actions → Release → Run workflow. It turns
 `[Unreleased]` into a dated version (`Added` → minor, anything else → patch,
-never 1.0 automatically), bumps `package.json`/`package-lock.json`, commits
-`Release vX.Y.Z`, tags it, opens a GitHub Release, and pushes
-`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. A final `deploy` job
+never 1.0 automatically), bumps `package.json`/`package-lock.json` and the
+spec's `info.version`, commits `Release vX.Y.Z`, tags it, opens a GitHub
+Release, and pushes
+`ghcr.io/pixelbar/spacestate:{vX.Y.Z,<sha>,latest}`. A `deploy` job
 then waits for approval of the GitHub Environment `prod`, rolls the Container
 App to the `<sha>` image with `az containerapp update`, and waits for
 `/healthz`. Terraform ignores the image (`lifecycle.ignore_changes`), so
 `terraform apply` never rolls prod back; it only manages infrastructure.
+In parallel with the deploy, `docs-build`/`docs-deploy` publish the docs site
+to GitHub Pages from the same commit — publishing docs needs no `prod`
+approval, and a failed deploy does not hold the site back.
 The bot pushes to `main`, so if branch protection is on, allow
 `github-actions[bot]` to bypass it.
 

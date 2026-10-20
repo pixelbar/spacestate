@@ -6,6 +6,7 @@
 export const CHANGELOG_FILE = "CHANGELOG.md";
 export const PACKAGE_JSON_FILE = "package.json";
 export const PACKAGE_LOCK_FILE = "package-lock.json";
+export const OPENAPI_FILE = "docs/openapi.yaml";
 export const SKIP_CHANGELOG_LABEL = "skip-changelog";
 export const DEFAULT_CHANGELOG_BASE = "origin/main";
 export const REPO_URL = "https://github.com/pixelbar/spacestate";
@@ -163,6 +164,35 @@ export function setPackageLockVersion(source: string, version: string): string {
   const root = parsed.packages?.[""];
   if (root) root.version = version;
   return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
+/**
+ * Keep the published API reference's `info.version` in step with package.json.
+ * Edited as text, not re-serialised: the spec is hand-written YAML and the
+ * comments and formatting in it are the documentation.
+ */
+export function setOpenApiVersion(source: string, version: string): string {
+  const lines = source.split("\n");
+  const info = lines.findIndex((line) => line === "info:");
+  if (info === -1) throw new Error(`${OPENAPI_FILE} has no top-level info: block.`);
+  // Only a direct child of info: counts. `description: |` is a block scalar,
+  // and prose inside it can say anything, including "version:".
+  let indent: string | undefined;
+  for (let i = info + 1; i < lines.length; i += 1) {
+    const line = lines[i] as string;
+    if (line.trim() === "") continue;
+    // The block ends at the next line that isn't indented.
+    const leading = /^\s+/.exec(line)?.[0];
+    if (leading === undefined) break;
+    indent ??= leading;
+    if (leading !== indent) continue;
+    const match = new RegExp(`^(${indent}version:\\s*)(.*)$`).exec(line);
+    if (match) {
+      lines[i] = `${match[1]}${version}`;
+      return lines.join("\n");
+    }
+  }
+  throw new Error(`${OPENAPI_FILE} has no version in its info: block.`);
 }
 
 export function readPackageVersion(source: string): string {

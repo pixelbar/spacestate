@@ -1,19 +1,13 @@
 name: Docs site
 
-# Publishes the API reference (docs/openapi.yaml rendered by VitePress) to
-# GitHub Pages at https://pixelbar.nl/spacestate/. A push to main that touches
-# the spec rebuilds and republishes it; nothing else needs editing. Pull
-# requests build the site to catch a broken spec, but do not publish.
+# The API reference (docs/openapi.yaml rendered by VitePress), published to
+# GitHub Pages at https://pixelbar.nl/spacestate/. Pull requests that touch it
+# build the site to catch a broken spec, but do not publish: publishing is the
+# Release workflow, so the live reference is the released one. This workflow can
+# still publish by hand (workflow_dispatch) if a maintainer needs to republish
+# without cutting a version.
 
 on:
-  push:
-    branches: [main]
-    # Kept in step with the pull_request list below by hand: GitHub Actions
-    # does not support YAML anchors.
-    paths:
-      - "docs/**"
-      - "scripts/build-docs.ts"
-      - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
@@ -62,7 +56,7 @@ jobs:
         run: just docs-build
 
       - name: Upload the site for Pages
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/.vitepress/dist
@@ -70,7 +64,7 @@ jobs:
   deploy:
     name: Publish to GitHub Pages
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -79,6 +73,11 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # Shared with the Release workflow's docs-deploy: one Pages deploy at a
+    # time, so a manual republish and a release can't race for the site.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     steps:
       - name: Deploy
         id: deployment

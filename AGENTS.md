@@ -27,8 +27,9 @@ copy, published next to the site for codegen.
 
 Edit `docs/openapi.yaml`. Nothing else — the pages render whatever the spec
 contains, and the sidebar and the per-operation pages are generated from it, so
-a new endpoint needs no new file. Push to `main` and
-`.github/workflows/docs.yml` rebuilds and republishes.
+a new endpoint needs no new file. Merging to `main` builds the site on the PR
+but does not publish it; the next release republishes it (Actions → Release),
+and `workflow_dispatch` on the Docs site workflow republishes by hand.
 
 Validate before pushing (CI runs the same check):
 
@@ -121,8 +122,12 @@ restyled internals show up as unthemed boxes rather than as a build failure.
 ### Publishing
 
 `.github/workflows/docs.yml` builds on every PR that touches `docs/`, and
-publishes on push to `main` (or `workflow_dispatch` to republish by hand).
-Pages must be set to "GitHub Actions" as its source — once, by an admin:
+publishes only on `workflow_dispatch`. The Release workflow owns publishing:
+its `docs-build`/`docs-deploy` jobs build the site from the released commit, so
+the published reference is the released API and not whatever has landed on
+`main` since. Both deploys share the `pages` concurrency group, so a manual
+republish and a release cannot race. Pages must be set to "GitHub Actions" as
+its source — once, by an admin:
 
 ```sh
 gh api -X POST repos/pixelbar/spacestate/pages -f build_type=workflow

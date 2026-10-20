@@ -1,5 +1,6 @@
 /**
- * Move CHANGELOG [Unreleased] into a dated version and bump package.json.
+ * Move CHANGELOG [Unreleased] into a dated version and bump package.json,
+ * package-lock.json and the OpenAPI spec's info.version.
  * Added → minor; Fixed/Changed/… → patch. Never major before 1.0.
  * Usage: just bump [--commit] [--date YYYY-MM-DD] [--dry-run] [--notes-file PATH]
  */
@@ -9,10 +10,12 @@ import {
   applyRelease,
   CHANGELOG_FILE,
   isIsoDate,
+  OPENAPI_FILE,
   PACKAGE_JSON_FILE,
   PACKAGE_LOCK_FILE,
   readPackageVersion,
   releaseTags,
+  setOpenApiVersion,
   setPackageLockVersion,
   setPackageVersion,
   todayUtc,
@@ -54,11 +57,27 @@ try {
       setPackageLockVersion(readFileSync(PACKAGE_LOCK_FILE, "utf8"), result.version),
     );
   }
+  // The published API reference shows info.version, so it ships the released
+  // number rather than whatever the last hand-edit said.
+  const specChanged = existsSync(OPENAPI_FILE);
+  if (specChanged) {
+    writeFileSync(
+      OPENAPI_FILE,
+      setOpenApiVersion(readFileSync(OPENAPI_FILE, "utf8"), result.version),
+    );
+  }
   writeNotesFile(args.notesFile, result.notes);
 
   if (!args.commit) process.exit(0);
 
-  runGit(["add", "--", changelogPath, packagePath, ...(lockChanged ? [PACKAGE_LOCK_FILE] : [])]);
+  runGit([
+    "add",
+    "--",
+    changelogPath,
+    packagePath,
+    ...(lockChanged ? [PACKAGE_LOCK_FILE] : []),
+    ...(specChanged ? [OPENAPI_FILE] : []),
+  ]);
   runGit(["commit", "-m", `Release v${result.version}`]);
   const existingTags = lines(
     execFileSync("git", ["tag", "--list", "v*"], {
