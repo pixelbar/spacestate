@@ -6,7 +6,11 @@ import { initSentry } from "./observability/sentry.js";
 // on first load. A static top-level import of app.ts would be hoisted ahead
 // of this call by the ESM loader — the dynamic import below is what keeps
 // the ordering correct.
-initSentry();
+//
+// The return value is logged below: without it, a deploy whose SENTRY_DSN went
+// missing looks exactly like a healthy one until someone notices Sentry has
+// gone quiet.
+const sentryEnabled = initSentry();
 
 const { buildApp } = await import("./app.js");
 
@@ -25,7 +29,11 @@ try {
   await Sentry.close(2000);
   process.exit(1);
 }
-app.log.info({ port, host, environment: process.env.SENTRY_ENVIRONMENT }, "spacestate started");
+app.log.info({ port, host, environment: process.env.SENTRY_ENVIRONMENT, sentryEnabled }, "spacestate started");
+if (!sentryEnabled) {
+  // Only reaches stdout (Log Analytics) — by definition it can't reach Sentry.
+  app.log.warn("Sentry is disabled: SENTRY_DSN is unset, so no errors, traces or logs are reported");
+}
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info(`Received ${signal}, shutting down`);
