@@ -22,6 +22,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `just bump` also rewrites `info.version` in `docs/openapi.yaml`, so the published reference carries the released version instead of the last hand-edited one.
 
+### Fixed
+
+- `terraform apply` with `bind_custom_domain=true` failed on a domain that was never bound before: Azure refuses to issue a managed certificate (`RequireCustomHostnameInEnvironment`) until the hostname is attached to an app, while the hostname binding depended on the certificate. The apply now attaches the hostname without a certificate, issues the managed certificate, then binds it with `az containerapp hostname bind` (`azurerm_container_app_custom_domain` cannot take a certificate created after it), and ignores later changes to the binding fields so the next plan does not revert it.
+
 ## [0.4.1] - 2026-10-16
 
 ### Fixed
