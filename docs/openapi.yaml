@@ -73,7 +73,9 @@ tags:
   - name: Webhooks
     description: |
       Register a URL to be told when the space opens or closes, instead of
-      polling `GET /api/v1/state`. Managing webhooks needs a `write` API key.
+      polling `GET /api/v1/state`. Managing webhooks needs a `write` API key, and each key sees and
+      manages only the webhooks it registered: another key's webhooks are
+      absent from the list and answer `404` on delete.
 
       On every recorded state change (not on requests that were already in
       the requested state) the service sends `POST <your url>` with a
@@ -221,7 +223,9 @@ paths:
     get:
       tags: [Webhooks]
       summary: List registered webhooks
-      description: Requires an API key with the `write` role. Secrets are never listed.
+      description: >-
+        Requires an API key with the `write` role. Lists only the webhooks
+        registered by this key; secrets are never listed.
       operationId: listWebhooks
       security:
         - bearerAuth: []
@@ -280,8 +284,8 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
           description: >-
-            That URL is already registered (`already_registered`, with the
-            existing `id`), or the registry is full (`too_many_webhooks`, 50).
+            You already registered that URL (`already_registered`, with the
+            existing `id`), or you have 20 webhooks (`too_many_webhooks`).
           content:
             application/json:
               schema:
@@ -296,7 +300,9 @@ paths:
     delete:
       tags: [Webhooks]
       summary: Remove a webhook
-      description: Requires an API key with the `write` role.
+      description: >-
+        Requires an API key with the `write` role. Only the key that
+        registered a webhook can remove it.
       operationId: deleteWebhook
       security:
         - bearerAuth: []
@@ -309,7 +315,7 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
-          description: No webhook with that id.
+          description: No webhook with that id registered by this key (another key's webhook looks the same).
           content:
             application/json:
               schema:

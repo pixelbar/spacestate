@@ -6,7 +6,8 @@ import { ConfigConflictError, type WritableConfigSource } from "../../config/sou
 
 const DEFAULT_POLL_INTERVAL_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 5;
-export const MAX_WEBHOOKS = 50;
+/** Per owner, so one key cannot fill the registry for the others. */
+export const MAX_WEBHOOKS_PER_OWNER = 20;
 
 const FILE_HEADER = "# Webhooks registered via POST /api/v1/webhooks. Managed by the app; safe to edit by hand (`just edit webhooks`).\n";
 
@@ -59,15 +60,23 @@ export class WebhookRegistry {
     return registry;
   }
 
+  /** Every webhook, for delivery. API callers must use `listOwnedBy`. */
   list(): WebhookEntry[] {
     return this.current.webhooks;
   }
 
+  listOwnedBy(owner: string): WebhookEntry[] {
+    return this.current.webhooks.filter((w) => w.createdBy === owner);
+  }
+
   async register(input: RegisterInput): Promise<RegisterResult> {
     return this.mutate((config) => {
-      const existing = config.webhooks.find((w) => w.url === input.url);
+      // Duplicates and limits are judged within the owner's own webhooks: another
+      // key's registrations must not be visible through them.
+      const owned = config.webhooks.filter((w) => w.createdBy === input.createdBy);
+      const existing = owned.find((w) => w.url === input.url);
       if (existing) return { kind: "duplicate", existing };
-      if (config.webhooks.length >= MAX_WEBHOOKS) return { kind: "limit" };
+      if (owned.length >= MAX_WEBHOOKS_PER_OWNER) return { kind: "limit" };
 
       const webhook: WebhookEntry = {
         id: `wh_${randomBytes(6).toString("hex")}`,
@@ -82,10 +91,10 @@ export class WebhookRegistry {
     });
   }
 
-  /** Returns false if no webhook has that id. */
-  async remove(id: string): Promise<boolean> {
+  /** Returns false if the owner has no webhook with that id (including ones that belong to someone else). */
+  async remove(id: string, owner: string): Promise<boolean> {
     return this.mutate((config) => {
-      const index = config.webhooks.findIndex((w) => w.id === id);
+      const index = config.webhooks.findIndex((w) => w.id === id && w.createdBy === owner);
       if (index === -1) return false;
       config.webhooks.splice(index, 1);
       return true;

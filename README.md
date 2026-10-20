@@ -136,8 +136,9 @@ curl -X POST https://spacestate.pixelbar.nl/api/v1/webhooks \
 # -> {"id": "wh_…", "secret": "…", …}   the secret is shown once
 ```
 
-`GET /api/v1/webhooks` lists registrations (without secrets) and
-`DELETE /api/v1/webhooks/{id}` removes one. On every recorded state change —
+`GET /api/v1/webhooks` lists your registrations (without secrets) and
+`DELETE /api/v1/webhooks/{id}` removes one. Each API key sees and manages only
+the webhooks it registered (another key's id answers 404), up to 20 per key. On every recorded state change —
 from the API or the legacy endpoints, not for no-op requests — the service
 POSTs a JSON body (`state`, `previousState`, `changedAt`, …) to each URL,
 signed with `X-Spacestate-Signature: sha256=HMAC(secret, "<timestamp>.<body>")`.

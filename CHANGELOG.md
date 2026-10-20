@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- Webhook notifications: clients register a URL with `POST /api/v1/webhooks` (write key; also `GET /api/v1/webhooks`, `DELETE /api/v1/webhooks/{id}`) and are POSTed a signed JSON body whenever the space state changes, whether the change came through `/api/v1` or the legacy endpoints. Deliveries are fire-and-forget with a 5 s timeout and three retries, HMAC-SHA256 signed with a per-webhook secret shown once at registration, and refuse non-https, credentialed and private-network targets. Documented in the OpenAPI spec and the README ("Webhooks").
+- Webhook notifications: clients register a URL with `POST /api/v1/webhooks` (write key; also `GET /api/v1/webhooks`, `DELETE /api/v1/webhooks/{id}`) and are POSTed a signed JSON body whenever the space state changes, whether the change came through `/api/v1` or the legacy endpoints. Each API key can list and delete only the webhooks it registered (someone else's id answers 404), with a limit of 20 per key. Deliveries are fire-and-forget with a 5 s timeout and three retries, HMAC-SHA256 signed with a per-webhook secret shown once at registration, and refuse non-https, credentialed and private-network targets. Documented in the OpenAPI spec and the README ("Webhooks").
 - Registrations persist in `webhooks.yaml`, a blob in a new `webhooks` storage container (`WEBHOOKS_CONFIG_SOURCE`; `config/prod/webhooks.yaml` locally). Writes are ETag-conditional and retried on conflict. Terraform adds the container, the app identity's Storage Blob Data Contributor role on it only (the `config` container stays read-only) and the env var; `just edit webhooks` works on the live file.
 
 ### Changed

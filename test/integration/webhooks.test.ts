@@ -97,6 +97,39 @@ describe("webhook registration", () => {
   });
 });
 
+describe("webhook ownership", () => {
+  const OTHER_KEY = "dev-other-write-key-000000";
+
+  it("hides one key's webhooks from another and refuses to delete them", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/webhooks",
+      headers: auth(WRITE_KEY),
+      payload: { url: "https://mine.example.org/hook" },
+    });
+    const { id } = created.json();
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/webhooks", headers: auth(OTHER_KEY) });
+    expect(list.json().webhooks).toEqual([]);
+    expect(list.body).not.toContain("mine.example.org");
+
+    const del = await app.inject({ method: "DELETE", url: `/api/v1/webhooks/${id}`, headers: auth(OTHER_KEY) });
+    expect(del.statusCode).toBe(404);
+
+    // Registering the same URL as someone else neither fails nor reveals theirs.
+    const same = await app.inject({
+      method: "POST",
+      url: "/api/v1/webhooks",
+      headers: auth(OTHER_KEY),
+      payload: { url: "https://mine.example.org/hook" },
+    });
+    expect(same.statusCode).toBe(201);
+    expect(same.json().id).not.toBe(id);
+
+    expect((await app.inject({ method: "DELETE", url: `/api/v1/webhooks/${id}`, headers: auth(WRITE_KEY) })).statusCode).toBe(204);
+  });
+});
+
 describe("webhook delivery", () => {
   it("notifies a registered receiver when the state changes, and not on a no-op", async () => {
     const created = await app.inject({

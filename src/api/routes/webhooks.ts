@@ -21,7 +21,9 @@ export const webhookRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   { apiKeyStore, webhookRegistry, webhookPolicy },
 ) => {
   // Managing webhooks needs a write key: a registration makes the service
-  // send requests to an arbitrary URL, so it is not open to read keys.
+  // send requests to an arbitrary URL, so it is not open to read keys. A key
+  // sees and manages only its own registrations (URLs can embed secrets);
+  // someone else's id answers 404, same as one that never existed.
   function requireWriter(request: FastifyRequest, reply: FastifyReply): AuthorizedKey | undefined {
     const key = resolveApiKey(apiKeyStore.get(), request);
     if (key && hasRole(key, "write")) return key;
@@ -31,8 +33,9 @@ export const webhookRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
   }
 
   fastify.get("/api/v1/webhooks", async (request, reply) => {
-    if (!requireWriter(request, reply)) return reply;
-    return { webhooks: webhookRegistry.list().map(publicView) };
+    const key = requireWriter(request, reply);
+    if (!key) return reply;
+    return { webhooks: webhookRegistry.listOwnedBy(key.id).map(publicView) };
   });
 
   fastify.post("/api/v1/webhooks", async (request, reply) => {
@@ -66,7 +69,7 @@ export const webhookRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
     const key = requireWriter(request, reply);
     if (!key) return reply;
 
-    const removed = await webhookRegistry.remove(request.params.id);
+    const removed = await webhookRegistry.remove(request.params.id, key.id);
     if (!removed) return reply.code(404).send({ error: "not_found" });
 
     request.log.info({ webhook: request.params.id, keyId: key.id }, "webhook removed");
