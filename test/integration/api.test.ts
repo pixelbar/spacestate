@@ -68,4 +68,31 @@ describe("new API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().api).toBe("0.13");
   });
+
+  it("returns an empty page with a cursor when a sparse history scan reaches its work budget", async () => {
+    const response = await app.inject({
+      url: "/api/v1/history?from=9000-01-01T00:00:00Z&to=9999-12-31T23:59:59Z",
+      headers: { authorization: `Bearer ${READ_KEY}` },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toEqual([]);
+    expect(response.json().continuationToken).toEqual(expect.any(String));
+  });
+
+  it("returns the documented validation response for unsafe cursors and reversed ranges", async () => {
+    const cursor = Buffer.from(JSON.stringify({ monthIndex: -1_000_000_000 })).toString("base64url");
+    const invalidInner = Buffer.from(JSON.stringify({ monthIndex: 0, innerToken: "not-json" })).toString("base64url");
+    for (const query of [
+      `continuationToken=${cursor}`,
+      `continuationToken=${invalidInner}`,
+      "from=2026-12-01T00:00:00Z&to=2026-01-01T00:00:00Z",
+    ]) {
+      const response = await app.inject({
+        url: `/api/v1/history?${query}`,
+        headers: { authorization: `Bearer ${READ_KEY}` },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: "invalid_query", details: [{ code: "custom" }] });
+    }
+  });
 });

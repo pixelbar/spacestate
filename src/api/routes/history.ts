@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { hasRole, resolveApiKey } from "../../auth/apiKey.js";
+import { InvalidHistoryQueryError } from "../../domain/history/types.js";
 import type { ApiPluginOptions } from "../plugin.js";
 
 const historyQuerySchema = z.object({
@@ -26,6 +27,14 @@ export const historyRoutes: FastifyPluginAsync<ApiPluginOptions> = async (
       return reply.code(400).send({ error: "invalid_query", details: parsed.error.issues });
     }
 
-    return historyService.query(parsed.data);
+    try {
+      return await historyService.query(parsed.data);
+    } catch (error) {
+      if (!(error instanceof InvalidHistoryQueryError)) throw error;
+      return reply.code(400).send({
+        error: "invalid_query",
+        details: [{ code: "custom", path: [error.field], message: error.message }],
+      });
+    }
   });
 };
