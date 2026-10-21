@@ -16,9 +16,9 @@ import {
  * Sentry.* call elsewhere in the app is then a safe no-op, no extra guards
  * needed at the call sites.
  */
-export function initSentry(): void {
-  const dsn = process.env.SENTRY_DSN;
-  if (!dsn) return;
+export function initSentry(): boolean {
+  const dsn = process.env.SENTRY_DSN?.trim();
+  if (!dsn) return false;
 
   Sentry.init({
     dsn,
@@ -47,4 +47,5 @@ export function initSentry(): void {
     beforeBreadcrumb: (breadcrumb) => scrubSentryBreadcrumb(breadcrumb),
     beforeSendLog: (log) => scrubSentryLog(log),
   });
+  return true;
 }

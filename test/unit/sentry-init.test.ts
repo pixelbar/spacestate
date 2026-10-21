@@ -41,7 +41,15 @@ describe("initSentry", () => {
 
   it("does nothing without a DSN", () => {
     delete process.env.SENTRY_DSN;
-    initSentry();
+    expect(initSentry()).toBe(false);
+    expect(sentry.init).not.toHaveBeenCalled();
+  });
+
+  it("preserves the startup enabled flag and ignores blank DSNs", () => {
+    expect(initSentry()).toBe(true);
+    sentry.init.mockClear();
+    process.env.SENTRY_DSN = "  ";
+    expect(initSentry()).toBe(false);
     expect(sentry.init).not.toHaveBeenCalled();
   });
 
