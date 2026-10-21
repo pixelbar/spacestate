@@ -5,10 +5,16 @@ TypeScript rewrite of Pixelbar's SpaceAPI + space-open/closed state service
 via Terraform.
 
 A clean new API lives alongside an isolated, temporary `src/legacy/` shim
-that keeps the old URL paths, token+IP toggle auth, and response shapes
-working for hardware/consumers that haven't migrated yet (the physical
+that keeps the old URL paths, query-string token toggle auth, and response
+shapes working for hardware/consumers that haven't migrated yet (the physical
 space-state button, in particular). See `src/legacy/plugin.ts` for what that
 covers and why.
+
+`POST /api/v1/state` is the canonical way to change state, for anything: it
+takes a per-client API key as a bearer token (never in the URL) and records
+the `source`, `user` and `method` on the change. The legacy toggle routes are
+thin adapters over that same path and authenticate on their device token
+alone — there is no per-device IP allowlist and no trusted-proxy handling.
 
 ## API docs
 
@@ -90,7 +96,10 @@ with a sample under `config/`:
   the live fields (`open`, `state.open`), which come from current state
   (`config/spaceapi.sample.json`)
 - `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
-- `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
+- `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`).
+  A device is `shortname`, `method` and `token`; the old per-device `ip` is
+  ignored (still accepted, so live blobs keep parsing — remove it at your
+  leisure)
 
 After the first `apply`, upload real ones:
 
