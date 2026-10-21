@@ -31,13 +31,6 @@ const SECRET_NAMES = [
 
 const SECRET_NAME_SET: ReadonlySet<string> = new Set(SECRET_NAMES);
 
-/**
- * Match complete parameter names before deciding whether they are secrets.
- * Decode names once, like the HTTP query parser, so `%74oken=` is covered
- * without confusing `continuationToken=` with a credential.
- */
-const PARAM_PATTERN = /([a-z0-9_%+.-]+)=[^&\s]*/gi;
-
 function isSecretName(name: string): boolean {
   try {
     name = decodeURIComponent(name.replace(/\+/g, " "));
@@ -49,9 +42,24 @@ function isSecretName(name: string): boolean {
 
 /** Replaces the value of every secret-looking `name=value` pair with `[redacted]`. */
 export function redactSecrets(value: string): string {
-  return value.replace(PARAM_PATTERN, (match, name: string) =>
-    isSecretName(name) ? `${name}=${REDACTED}` : match,
-  );
+  // Always consume a complete name run, even without '=', to avoid retrying
+  // the same suffixes. Decode names once, like the HTTP query parser.
+  const names = /[a-z0-9_%+.-]+/gi;
+  const valueBoundary = /[&\s]/g;
+  const parts: string[] = [];
+  let copiedThrough = 0;
+  let match: RegExpExecArray | null;
+  while ((match = names.exec(value)) !== null) {
+    if (value[names.lastIndex] !== "=" || !isSecretName(match[0])) continue;
+
+    const valueStart = names.lastIndex + 1;
+    valueBoundary.lastIndex = valueStart;
+    const valueEnd = valueBoundary.exec(value)?.index ?? value.length;
+    parts.push(value.slice(copiedThrough, valueStart), REDACTED);
+    copiedThrough = valueEnd;
+    names.lastIndex = valueEnd;
+  }
+  return parts.length === 0 ? value : parts.join("") + value.slice(copiedThrough);
 }
 
 /**

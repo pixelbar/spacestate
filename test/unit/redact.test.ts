@@ -20,8 +20,18 @@ function noToken(value: unknown): void {
 }
 
 describe("redactSecrets", () => {
-  it.each(["<", ">", "'", '"', "#"])("does not expose a value suffix after %s", (separator) => {
+  it.each(["<", ">", "'", '"', "#", "?", ";", "="])("does not expose a value suffix after %s", (separator) => {
     expect(redactSecrets(`token=prefix${separator}secret-tail`)).toBe(`token=${REDACTED}`);
+  });
+  it.each([
+    `url=/x?token=${TOKEN}`,
+    `a=1;token=${TOKEN}`,
+    `outer=inner=token=${TOKEN}`,
+    `url=/x?%74oken=${TOKEN}`,
+  ])("finds credentials inside non-secret values: %s", (input) => {
+    const output = redactSecrets(input);
+    noToken(output);
+    expect(output).toBe(input.replace(TOKEN, REDACTED));
   });
   it("redacts percent-encoded credential names without redacting paging cursors", () => {
     expect(redactSecrets(`?%74oken=${TOKEN}&access%5Ftoken=${TOKEN}&continuationToken=cursor`)).toBe(
@@ -42,8 +52,21 @@ describe("redactSecrets", () => {
   });
 
   it("leaves non-credential parameters alone, including continuation tokens", () => {
-    const query = "limit=5&continuationToken=1!52!RGF0ZQ--";
+    const query = "limit=5&continuationToken=1!52!RGF0ZQ--&not_token=safe&token.foo=safe";
     expect(redactSecrets(query)).toBe(query);
+  });
+
+  it("handles long name runs without repeatedly scanning their suffixes", () => {
+    const name = "a".repeat(200_000);
+    expect(redactSecrets(name)).toBe(name);
+    expect(redactSecrets(`${name}=/x?token=${TOKEN}`)).toBe(`${name}=/x?token=${REDACTED}`);
+  });
+
+  it("handles empty values, adjacent secrets and assignments inside secret values", () => {
+    expect(redactSecrets(`token=&password=${TOKEN}&limit=5`)).toBe(
+      `token=${REDACTED}&password=${REDACTED}&limit=5`,
+    );
+    expect(redactSecrets(`token=prefix;password=${TOKEN}`)).toBe(`token=${REDACTED}`);
   });
 });
 

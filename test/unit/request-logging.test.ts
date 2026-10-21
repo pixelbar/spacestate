@@ -34,6 +34,20 @@ async function buildApp() {
 }
 
 describe("request logging", () => {
+  it("redacts credentials nested in other parameter values from request and error logs", async () => {
+    const { app, lines } = await buildApp();
+    for (const path of ["/api/v1/history", "/url-error", "/unknown"]) {
+      for (const query of [`url=/x?token=${TOKEN}`, `a=1;%74oken=${TOKEN}`]) {
+        await app.inject(`${path}?${query}`);
+      }
+    }
+    await app.close();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join("\n")).not.toContain(TOKEN);
+    expect(lines.some((line) => line.includes("/api/v1/history"))).toBe(true);
+    expect(lines.some((line) => line.includes("request failed"))).toBe(true);
+  });
+
   it("redacts encoded credential names from request and error logs", async () => {
     const { app, lines } = await buildApp();
     for (const path of ["/api/v1/history", "/url-error", "/unknown"]) {
