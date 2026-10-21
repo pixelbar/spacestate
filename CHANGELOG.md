@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Security
 
+- URL redaction also covers percent-encoded credential names, absolute and encoded legacy paths, Sentry query pairs, and error logs. Nested attributes are redacted at the depth limit. Sentry initialization preserves the startup enabled flag and blank-DSN handling.
+
 - Credentials in a request URL no longer reach the logs. The legacy device token is passed as a `token` query parameter, and Fastify's default request log wrote the URL verbatim while its default 404 echoed it back ("Route POST:/togglestate.php?…&token=… not found"), so a token ended up in stdout and in Sentry Logs. The pino `req` serializer now redacts URLs — the whole query string on the legacy routes, credential-carrying parameters (`token`, `access_token`, `api_key`, `secret`, `password`, …) everywhere else — unknown paths answer a generic `404 {"error":"not_found"}` that says nothing about the request, and the error handler redacts the URL it tags Sentry events with. Sentry's own collection is scrubbed too, via `beforeSend`, `beforeSendTransaction`, `beforeSendSpan`, `beforeBreadcrumb` and `beforeSendLog`: request URLs and query strings, span names and `http.url`/`url.full`/`url.query` attributes, breadcrumbs, tags, extra and forwarded pino logs. All of it goes through one helper, `src/observability/redact.ts`. Exposed tokens still have to be rotated by hand (issue #14).
 
 ## [0.5.0] - 2026-10-20

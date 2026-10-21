@@ -20,6 +20,14 @@ function noToken(value: unknown): void {
 }
 
 describe("redactSecrets", () => {
+  it.each(["<", ">", "'", '"', "#"])("does not expose a value suffix after %s", (separator) => {
+    expect(redactSecrets(`token=prefix${separator}secret-tail`)).toBe(`token=${REDACTED}`);
+  });
+  it("redacts percent-encoded credential names without redacting paging cursors", () => {
+    expect(redactSecrets(`?%74oken=${TOKEN}&access%5Ftoken=${TOKEN}&continuationToken=cursor`)).toBe(
+      `?%74oken=${REDACTED}&access%5Ftoken=${REDACTED}&continuationToken=cursor`,
+    );
+  });
   it("redacts token values wherever they appear in a string", () => {
     const message = `Route POST:/togglestate.php?user=Pixelbar&token=${TOKEN} not found`;
     const redacted = redactSecrets(message);
@@ -40,6 +48,11 @@ describe("redactSecrets", () => {
 });
 
 describe("redactUrl", () => {
+  it.each(["https://example.invalid/", "GET /", "POST:https://example.invalid/", "/togglestate.%70hp"])(
+    "drops the legacy query for %s", (path) => {
+      expect(redactUrl(`${path}?unexpected=${TOKEN}`)).toBe(`${path}?${REDACTED}`);
+    },
+  );
   it("drops the whole query string on the legacy routes", () => {
     expect(redactUrl(`/togglestate.php?user=Pixelbar&token=${TOKEN}&state=open`)).toBe(
       `/togglestate.php?${REDACTED}`,
@@ -83,6 +96,23 @@ describe("scrubAttributes", () => {
 });
 
 describe("Sentry payload scrubbing", () => {
+  it("scrubs encoded and tuple query strings", () => {
+    const event = scrubSentryEvent({
+      request: {
+        url: `https://example.invalid/?%74oken=${TOKEN}`,
+        query_string: [["%74oken", TOKEN], ["limit", "5"]],
+      },
+    });
+    noToken(event);
+    expect(event.request?.query_string).toEqual([["%74oken", REDACTED], ["limit", "5"]]);
+    noToken(scrubSentryEvent({ request: { query_string: `%74oken=${TOKEN}` } }));
+  });
+
+  it("does not return unsanitized objects at the recursion limit", () => {
+    let nested: object = { token: TOKEN };
+    for (let i = 0; i < 12; i += 1) nested = { nested };
+    noToken(scrubAttributes(nested));
+  });
   it("scrubs events: request, tags, extra, breadcrumbs, exceptions and spans", () => {
     const event = scrubSentryEvent({
       message: `failed for token=${TOKEN}`,
