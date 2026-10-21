@@ -49,8 +49,25 @@ export const legacyConfigSchema = z.object({
   legacyDevices: z.array(legacyDeviceSchema).default([]),
 });
 
+const webhookEntrySchema = z.object({
+  id: z.string().min(1),
+  url: z.string().url(),
+  /** HMAC-SHA256 key for signing deliveries; generated at registration. */
+  secret: z.string().min(16),
+  /** Free-form note from the registrant (who to contact when it breaks). */
+  description: z.string().optional(),
+  createdAt: z.string(),
+  createdBy: z.string(),
+});
+
+export const webhooksConfigSchema = z.object({
+  webhooks: z.array(webhookEntrySchema).default([]),
+});
+
 export type SpaceApiConfig = z.infer<typeof spaceApiConfigSchema>;
 export type ApiKeysConfig = z.infer<typeof apiKeysConfigSchema>;
 export type LegacyConfig = z.infer<typeof legacyConfigSchema>;
 export type ApiKeyEntry = z.infer<typeof apiKeyEntrySchema>;
 export type LegacyDevice = z.infer<typeof legacyDeviceSchema>;
+export type WebhooksConfig = z.infer<typeof webhooksConfigSchema>;
+export type WebhookEntry = z.infer<typeof webhookEntrySchema>;

@@ -1,0 +1,11 @@
+# Sample webhook registry. Not read by default: locally the app uses
+# config/prod/webhooks.yaml (created on first registration), and in production
+# the `webhooks` blob container. Entries normally arrive via
+# POST /api/v1/webhooks; this shows the shape for editing by hand.
+webhooks:
+  - id: "wh_0123456789ab"
+    url: "https://hooks.example.org/pixelbar"
+    secret: "replace-with-a-long-random-string"
+    description: "Example receiver"
+    createdAt: "2026-10-20T18:00:00.000Z"
+    createdBy: "dev-writer"

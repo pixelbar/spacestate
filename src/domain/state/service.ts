@@ -5,16 +5,28 @@ import type {
   CurrentStateStore,
   SpaceState,
   StateChangeInput,
+  StateChangeListener,
   StateChangeResult,
 } from "./types.js";
 
 const DEFAULT_STATE: SpaceState = "closed";
 
 export class StateService {
+  private readonly listeners: StateChangeListener[] = [];
+
   constructor(
     private readonly currentStateStore: CurrentStateStore,
     private readonly historyStore: HistoryStore,
   ) {}
+
+  /**
+   * Registers a callback run after every state change that was recorded (not
+   * for no-ops). Listeners are fire-and-forget: they are not awaited, and one
+   * that throws is reported without affecting the change or other listeners.
+   */
+  onChange(listener: StateChangeListener): void {
+    this.listeners.push(listener);
+  }
 
   async getCurrentState(): Promise<CurrentStateSnapshot> {
     try {
@@ -126,6 +138,14 @@ export class StateService {
         await this.currentStateStore.clear();
       } catch (clearErr) {
         Sentry.captureException(clearErr);
+      }
+    }
+
+    for (const listener of this.listeners) {
+      try {
+        listener({ snapshot, previousState: current.state });
+      } catch (err) {
+        Sentry.captureException(err);
       }
     }
 

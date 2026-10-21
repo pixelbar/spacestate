@@ -9,14 +9,19 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- History queries read at most 12 monthly partitions per page, including empty ones, and resume through a continuation token. Wide date ranges no longer allocate every month or trigger unbounded storage work; unsafe cursors and reversed ranges return 400.
+- Webhook notifications: clients register a URL with `POST /api/v1/webhooks` (write key; also `GET /api/v1/webhooks`, `DELETE /api/v1/webhooks/{id}`) and are POSTed a signed JSON body whenever the space state changes, whether the change came through `/api/v1` or the legacy endpoints. Each API key can list and delete only the webhooks it registered (someone else's id answers 404), with a limit of 20 per key. Deliveries are fire-and-forget with a 5 s timeout and three retries, HMAC-SHA256 signed with a per-webhook secret shown once at registration, and refuse non-https, credentialed and private-network targets. Documented in the OpenAPI spec and the README ("Webhooks").
+- Registrations persist in `webhooks.yaml`, a blob in a new `webhooks` storage container (`WEBHOOKS_CONFIG_SOURCE`; `config/prod/webhooks.yaml` locally). Writes are ETag-conditional and retried on conflict. Terraform adds the container, the app identity's Storage Blob Data Contributor role on it only (the `config` container stays read-only) and the env var; `just edit webhooks` works on the live file.
 
 ### Changed
 
 - A `terraform apply` that forgets the Sentry DSN now fails instead of silently deploying with error reporting off: `sentry_dsn` is validated against the new `sentry_enabled` variable (default `true`), so an empty DSN stops the plan with a message naming the variable. Running without Sentry stays possible but has to be deliberate — `-var="sentry_enabled=false"`, which drops the `sentry-dsn` secret and the `SENTRY_DSN` env var. A `sentry_enabled` output says which way the stack stands, and `*.tfvars` is now gitignored so `infra/sentry.auto.tfvars` can hold the DSN for every apply (README: "Observability").
 - The app says at startup whether it reports to Sentry: `initSentry()` returns that, the `spacestate started` log carries `sentryEnabled`, and a start without a DSN also logs a `Sentry is disabled` warning. A blank `SENTRY_DSN` counts as unset. The DSN itself is never logged.
+
+### Fixed
+
+- History queries read at most 12 monthly partitions per page, including empty ones, and resume through a continuation token. Wide date ranges no longer allocate every month or trigger unbounded storage work; unsafe cursors and reversed ranges return 400.
 
 ## [0.5.0] - 2026-10-20
 
