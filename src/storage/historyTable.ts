@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { TableClient } from "@azure/data-tables";
 import * as Sentry from "@sentry/node";
+import { InvalidHistoryQueryError } from "../domain/history/types.js";
 import type { HistoryEntry, HistoryPage, HistoryQuery, HistoryStore } from "../domain/history/types.js";
 
 // 14 digits: safely beyond epoch-millis for the foreseeable future, used to
 // invert the timestamp so RowKeys sort newest-first within a partition.
 const INVERTED_MAX = 99_999_999_999_999;
+// Empty partitions still cost a storage read. Bound work as well as results.
+const MAX_PARTITION_READS = 12;
 
 function monthPartitionKey(iso: string): string {
   return iso.slice(0, 7); // "YYYY-MM"
@@ -18,30 +21,17 @@ function invertedRowKey(iso: string): string {
 }
 
 // `monthIndex` is deliberately not bounds-checked by the caller (e.g.
-// December of the previous year is expressed as monthIndex -1) — the Date
-// constructor normalizes any integer month into a real year/month, which is
-// what correctly carries the year across a backward rollover.
+// December of the previous year is expressed as monthIndex -1). Normalize
+// arithmetically, including a year rollover, without
+// Date's special treatment of years 0-99. Partition keys use UTC months.
 function monthKeyAt(year: number, monthIndex: number): string {
-  const normalized = new Date(year, monthIndex, 1);
-  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}`;
+  const normalizedYear = year + Math.floor(monthIndex / 12);
+  const normalizedMonth = ((monthIndex % 12) + 12) % 12;
+  return `${String(normalizedYear).padStart(4, "0")}-${String(normalizedMonth + 1).padStart(2, "0")}`;
 }
 
-/** Inclusive list of "YYYY-MM" partition keys between two ISO timestamps. */
-function monthsBetween(fromIso: string, toIso: string): string[] {
-  const from = new Date(fromIso);
-  const to = new Date(toIso);
-  const months: string[] = [];
-  let year = from.getFullYear();
-  let monthIndex = from.getMonth();
-  while (year < to.getFullYear() || (year === to.getFullYear() && monthIndex <= to.getMonth())) {
-    months.push(monthKeyAt(year, monthIndex));
-    monthIndex += 1;
-    if (monthIndex > 11) {
-      monthIndex = 0;
-      year += 1;
-    }
-  }
-  return months;
+function monthNumber(date: Date): number {
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
 }
 
 function escapeODataString(value: string): string {
@@ -54,8 +44,9 @@ function escapeODataString(value: string): string {
  * regardless of filter clause order. To get a genuinely newest-first result
  * across month boundaries, partitions are queried one at a time, newest
  * month first, stopping once `limit` is reached. This token tracks where to
- * resume: which month (by index into the newest-first month list) and the
- * inner Table Storage continuation token within that month's partition.
+ * resume: which month (as an offset from the newest month) and the inner
+ * Table Storage continuation token within that month's partition. A page
+ * may be empty but have a cursor when the partition-read budget is reached.
  */
 interface QueryCursor {
   monthIndex: number;
@@ -66,15 +57,30 @@ function encodeCursor(cursor: QueryCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-function decodeCursor(token: string | undefined): QueryCursor {
-  if (!token) return { monthIndex: 0 };
+function isValidInnerToken(token: unknown): boolean {
+  if (token === undefined) return true;
+  if (typeof token !== "string" || token.length === 0) return false;
+  // The Azure Tables SDK emits base64 JSON with these continuation fields.
+  // Validate before the SDK decodes it, so malformed cursors remain a 400.
+  const parsed = JSON.parse(Buffer.from(token, "base64").toString("latin1"));
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) &&
+    typeof parsed.nextPartitionKey === "string" && parsed.nextPartitionKey.length > 0 &&
+    (parsed.nextRowKey === undefined || typeof parsed.nextRowKey === "string");
+}
+
+function decodeCursor(token: string | undefined, monthCount: number): QueryCursor {
+  if (token === undefined) return { monthIndex: 0 };
   try {
     const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
-    if (typeof parsed.monthIndex === "number") return parsed as QueryCursor;
+    if (
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) &&
+      Number.isSafeInteger(parsed.monthIndex) && parsed.monthIndex >= 0 && parsed.monthIndex < monthCount &&
+      isValidInnerToken(parsed.innerToken)
+    ) return { monthIndex: parsed.monthIndex, innerToken: parsed.innerToken };
   } catch {
-    // Malformed/foreign token: restart from the newest month rather than erroring.
+    // Invalid outer cursors must not reach the storage loop.
   }
-  return { monthIndex: 0 };
+  throw new InvalidHistoryQueryError("continuationToken", "Invalid history continuation token");
 }
 
 function toHistoryEntry(entity: Record<string, unknown>): HistoryEntry {
@@ -112,7 +118,7 @@ export class TableHistoryStore implements HistoryStore {
       // Try the current month, then fall back one month to cover the first
       // few days after a month rollover with no new entries yet.
       for (const monthsAgo of [0, 1]) {
-        const month = monthKeyAt(now.getFullYear(), now.getMonth() - monthsAgo);
+        const month = monthKeyAt(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo);
         const iter = this.client.listEntities({ queryOptions: { filter: `PartitionKey eq '${month}'` } });
         for await (const entity of iter) {
           return toHistoryEntry(entity);
@@ -125,21 +131,33 @@ export class TableHistoryStore implements HistoryStore {
   async query(query: HistoryQuery): Promise<HistoryPage> {
     return Sentry.startSpan({ name: "StateHistory.query", op: "db.table.query" }, async () => {
       const to = query.to ?? new Date().toISOString();
-      const from = query.from ?? new Date(new Date(to).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const months = monthsBetween(from, to).reverse(); // newest month first
+      const toDate = new Date(to);
+      if (!Number.isFinite(toDate.getTime())) {
+        throw new InvalidHistoryQueryError("to", "Invalid history end time");
+      }
+      const from = query.from ?? new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const fromDate = new Date(from);
+      if (!Number.isFinite(fromDate.getTime()) || fromDate > toDate) {
+        throw new InvalidHistoryQueryError("from", "History start time must be at or before the end time");
+      }
+      const newestMonth = monthNumber(toDate);
+      const monthCount = newestMonth - monthNumber(fromDate) + 1;
       const deviceFilter = query.device ? ` and deviceShortname eq '${escapeODataString(query.device)}'` : "";
       // changedAt is a fixed-width ISO-8601 UTC string, so lexicographic
       // comparison matches chronological order.
       const timeFilter = ` and changedAt ge '${from}' and changedAt le '${to}'`;
       const limit = query.limit ?? 50;
 
-      const cursor = decodeCursor(query.continuationToken);
+      const cursor = decodeCursor(query.continuationToken, monthCount);
       const items: HistoryEntry[] = [];
       let monthIndex = cursor.monthIndex;
       let innerToken = cursor.innerToken;
+      let partitionReads = 0;
 
-      while (monthIndex < months.length && items.length < limit) {
-        const filter = `PartitionKey eq '${months[monthIndex]}'${deviceFilter}${timeFilter}`;
+      while (monthIndex < monthCount && items.length < limit && partitionReads < MAX_PARTITION_READS) {
+        const month = monthKeyAt(0, newestMonth - monthIndex);
+        const filter = `PartitionKey eq '${month}'${deviceFilter}${timeFilter}`;
+        partitionReads += 1;
         const pageIterator = this.client
           .listEntities({ queryOptions: { filter } })
           .byPage({ maxPageSize: limit - items.length, continuationToken: innerToken });
@@ -158,7 +176,7 @@ export class TableHistoryStore implements HistoryStore {
         innerToken = undefined;
       }
 
-      const hasMoreMonths = monthIndex < months.length;
+      const hasMoreMonths = monthIndex < monthCount;
       return {
         items,
         continuationToken: hasMoreMonths ? encodeCursor({ monthIndex }) : undefined,
