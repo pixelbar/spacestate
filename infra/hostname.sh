@@ -8,28 +8,41 @@
 #
 # Each write is a read-modify-write of the app's whole customDomains list, so
 # two at once (one apply touching several domains) can drop one of them or
-# fail with ContainerAppOperationInProgress. The lock serializes them; a lock
-# older than ten minutes is from an apply that was killed mid-write and is
-# broken.
+# fail with ContainerAppOperationInProgress. An exclusive flock serializes
+# them. The kernel releases it when this process exits, however it exits, so
+# an apply killed mid-write leaves no stale lock to break. macOS has no
+# flock(1), so perl takes the lock and re-runs this script holding it.
 #
 # add and delete are no-ops when the hostname is already there or already gone.
 set -euo pipefail
 
+if [ -z "${HOSTNAME_SH_LOCKED:-}" ]; then
+  export HOSTNAME_SH_LOCKED=1
+  # $^F keeps the locked handle open across exec (perl closes it otherwise).
+  exec perl -MFcntl=:flock -e '
+    $^F = 255;
+    open(my $fh, ">>", shift) or die "hostname.sh: lock: $!\n";
+    flock($fh, LOCK_EX) or die "hostname.sh: lock: $!\n";
+    exec(@ARGV) or die "hostname.sh: exec: $!\n";
+  ' "$(dirname "$0")/.terraform/hostname.lock" "$0" "$@"
+fi
+
 action="$1" app="$2" rg="$3" host="$4"
 
-lock="$(dirname "$0")/.terraform/hostname.lock"
-until mkdir "$lock" 2>/dev/null; do
-  if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
-    rmdir "$lock" 2>/dev/null || true
-    continue
-  fi
-  sleep 2
-done
-trap 'rmdir "$lock"' EXIT
-
+# Fails the script, not just the test, when az does: a failed lookup must not
+# read as "not attached" and make delete skip silently.
 attached() {
-  [ "$(az containerapp hostname list -g "$rg" -n "$app" \
-    --query "length([?name=='$host'])" -o tsv)" = 1 ]
+  local count
+  count="$(az containerapp hostname list -g "$rg" -n "$app" \
+    --query "length([?name=='$host'])" -o tsv)" || exit 1
+  case "$count" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *)
+      echo "hostname.sh: unexpected hostname count for $host: '$count'" >&2
+      exit 1
+      ;;
+  esac
 }
 
 case "$action" in
