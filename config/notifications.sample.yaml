@@ -12,4 +12,13 @@ messages:
   open: "{space} is open."
   closed: "{space} is closed."
 
-channels: []
+channels:
+  # Posts a status. Token: Preferences → Development → New application, with
+  # only the write:statuses scope.
+  - type: mastodon
+    id: pixelbar
+    enabled: false
+    instance: "https://mastodon.example"
+    accessToken: "replace-with-the-application-access-token"
+    visibility: public          # or unlisted | private | direct
+    language: en                # optional
