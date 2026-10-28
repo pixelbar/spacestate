@@ -57,7 +57,8 @@ just test-integration  # exercises both the new API and the legacy adapter
 ## Deploying
 
 Infra lives in `infra/` (Terraform, `azurerm` provider). The app serves
-`spacestate.pixelbar.nl`, the default of `custom_domains`.
+`spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of
+`custom_domains`.
 
 ```sh
 cd infra
