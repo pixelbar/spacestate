@@ -44,6 +44,12 @@ resource "terraform_data" "bind_certificate" {
     each.key,
   ]
 
+  # Destroy provisioners can only read self, so the unbind below reads these.
+  input = {
+    app            = azurerm_container_app.spacestate.name
+    resource_group = azurerm_resource_group.spacestate.name
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
       az containerapp hostname bind \
@@ -52,6 +58,27 @@ resource "terraform_data" "bind_certificate" {
         --hostname ${each.key} \
         --environment ${azurerm_container_app_environment.spacestate.name} \
         --certificate ${azurerm_container_app_environment_managed_certificate.spacestate[each.key].id} \
+        --output none
+    EOT
+  }
+
+  # Removing a domain destroys this, then the certificate, then the hostname
+  # (the reverse of creation). Azure refuses to delete a certificate that is
+  # still bound (CertificateInUse), and the binding was made out of band, so
+  # take the hostname off the app here first. The hostname resource's own
+  # delete then finds nothing left to remove.
+  #
+  # Instances created before `input` existed have it null; the fallbacks are
+  # the app name from container_app.tf and the resource group from the
+  # certificate ID.
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      az containerapp hostname delete \
+        --name ${try(self.input.app, "spacestate")} \
+        --resource-group ${try(self.input.resource_group, split("/", self.triggers_replace[0])[4])} \
+        --hostname ${self.triggers_replace[1]} \
+        --yes \
         --output none
     EOT
   }
