@@ -43,6 +43,13 @@ resource "azurerm_container_app" "spacestate" {
         value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/legacy.yaml"
       }
 
+      # Optional: until notifications.yaml is uploaded the app runs without
+      # announcing changes, and picks it up within minutes once it is.
+      env {
+        name  = "NOTIFICATIONS_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/notifications.yaml"
+      }
+
       env {
         name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.spacestate.name

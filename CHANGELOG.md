@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- State changes are announced through a generic notification system (`src/notifications/`). Every recorded change, from `/api/v1` or the legacy endpoints, is handed to each subscriber without delaying the response: each attempt times out (10 s by default), failures are retried after 1 s, 5 s and 30 s unless the subscriber says retrying cannot help, and deliveries to one subscriber stay in order. Outcomes are logged to Sentry. Channel types plug in through a registry, and the operator lists channels in `notifications.yaml`, a new optional config blob (`NOTIFICATIONS_CONFIG_SOURCE`, `just edit notifications`) with per-channel message templates (`{space}`, `{state}`, `{time}`, …). Without that blob the app runs as before and announces nothing; Terraform adds the env var, and an upload takes effect within five minutes. README: "Notifications".
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed

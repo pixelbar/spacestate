@@ -95,14 +95,17 @@ az storage container create --account-name pixelbartfstate --name spacestate --a
 terraform init -migrate-state -backend-config=backend.azurerm.hcl
 ```
 
-The app reads its config from three blobs rather than a database, each
-with a sample under `config/`:
+The app reads its config from blobs rather than a database, each with a
+sample under `config/`:
 
 - `spaceapi.json` — the public SpaceAPI document, exactly as served, minus
   the live fields (`open`, `state.open`), which come from current state
   (`config/spaceapi.sample.json`)
 - `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
 - `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
+- `notifications.yaml` — where state changes are announced, and the
+  credentials to do it (`config/notifications.sample.yaml`). Optional: see
+  "Notifications"
 
 After the first `apply`, upload real ones:
 
@@ -121,7 +124,7 @@ To change a live config safely (pull, edit, validate, review diff, confirm, push
 
 ```sh
 cp .env.example .env   # then set SPACESTATE_STORAGE_ACCOUNT (just loads .env automatically)
-just edit spaceapi   # or api-keys | legacy: edit remote in $EDITOR, diff, confirm, push
+just edit spaceapi   # or api-keys | legacy | notifications: edit remote in $EDITOR, diff, confirm, push
 just pull            # diff remote vs config/prod/ (gitignored), confirm overwriting local
 just push            # diff remote vs config/prod/, confirm overwriting remote (add a name for one file)
 ```
@@ -130,11 +133,63 @@ To add an API key: `just api-key <id> --role read|write --add` appends a freshly
 generated key to `config/prod/api-keys.yaml`, then `just push api-keys`.
 
 Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
-`API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).
+`API_KEYS_CONFIG_SOURCE`, `LEGACY_CONFIG_SOURCE` and
+`NOTIFICATIONS_CONFIG_SOURCE` (`file://` or `blob://`).
 
 Editing those blobs later takes effect on the next cold start (or within a
 few minutes if a replica is already running — see `src/config/loader.ts`),
 no redeploy needed.
+
+## Notifications
+
+Every recorded state change — from `/api/v1` or the legacy endpoints, never a
+no-op request — is announced to subscribers. The pieces, in `src/notifications/`:
+
+- **`NotificationDispatcher`** fans a change out to every subscriber of every
+  source. It is fire-and-forget (the request that changed the state never waits),
+  times each attempt out (10 s unless the subscriber says otherwise), retries
+  failures after 1 s, 5 s and 30 s, and delivers to each subscriber in order,
+  so a retried "open" is never posted after the "closed" that followed it.
+  Outcomes go to Sentry Logs (`Notification delivered` / `Notification
+  delivery failed`, with the subscriber id).
+- **A subscriber** makes one attempt per call and throws to fail it — a
+  `DeliveryError` with `retryable: false` when retrying cannot help (a revoked
+  token, say).
+- **A subscriber source** is asked for its subscribers on every change, so the
+  set can change at runtime. `ConfiguredChannels` is the operator's list in
+  `notifications.yaml`.
+
+`notifications.yaml` lists channels by `type`, each validated by that type's
+schema (so `just edit notifications` catches a misspelt field before it is
+pushed), plus the messages they post:
+
+```yaml
+timeZone: Europe/Amsterdam        # for {time} and {date}
+messages:                         # optional; these are the defaults
+  open: "{space} is open."
+  closed: "{space} is closed."
+channels:
+  - type: <channel type>
+    id: pixelbar                  # logged as <type>:<id>
+    enabled: true                 # false keeps the entry without posting
+    messages: { open: "…" }       # optional, overrides the above for this channel
+    # …whatever that type needs
+```
+
+Placeholders are `{space}` (the SpaceAPI `space` name), `{state}`,
+`{previousState}`, `{changedBy}`, `{method}`, `{time}` and `{date}`; an
+unknown one fails validation. `{changedBy}` is whoever flipped the switch, so
+think before publishing it.
+
+The document is optional. Without it, or while it fails validation, the app
+serves state as usual and announces nothing (a broken one is reported to
+Sentry); an upload is picked up within five minutes, no restart needed. In
+production it sits next to the other config blobs, and holds secrets like
+`api-keys.yaml` does.
+
+Adding a channel type is a module exporting a `ChannelType` (a schema that
+extends `channelBaseSchema`, and a `create` that returns a subscriber) plus a
+line in `src/notifications/channels/index.ts`.
 
 ## Observability
 
@@ -160,7 +215,7 @@ deploy without error reporting on purpose, say so explicitly with
 no `SENTRY_DSN` on the container) and the `sentry_enabled` output reads `false`.
 
 There is no Key Vault in this stack, and `just pull`/`push`/`edit` only move the
-three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
+config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`, `notifications.yaml`), so
 Terraform is the one place the DSN lives. Rotating it is an `apply`.
 
 What is reported: 5xx errors (with route/method), config reload and
