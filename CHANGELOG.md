@@ -14,6 +14,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Webhook notifications: clients register a URL with `POST /api/v1/webhooks` (write key; also `GET /api/v1/webhooks`, `DELETE /api/v1/webhooks/{id}`) and are POSTed a signed JSON body whenever the space state changes, whether the change came through `/api/v1` or the legacy endpoints. Each API key can list and delete only the webhooks it registered (someone else's id answers 404), with a limit of 20 per key. Deliveries are fire-and-forget with a 5 s timeout and three retries, HMAC-SHA256 signed with a per-webhook secret shown once at registration, and refuse non-https, credentialed and private-network targets. Documented in the OpenAPI spec and the README ("Webhooks").
 - Registrations persist in `webhooks.yaml`, a blob in a new `webhooks` storage container (`WEBHOOKS_CONFIG_SOURCE`; `config/prod/webhooks.yaml` locally). Writes are ETag-conditional and retried on conflict. Terraform adds the container, the app identity's Storage Blob Data Contributor role on it only (the `config` container stays read-only) and the env var; `just edit webhooks` works on the live file.
 
+### Fixed
+
+- A `terraform apply` that adds or removes more than one domain no longer races on the Container App. Each hostname write rewrites the app's whole domain list, and the parallel writes (the provider's deletes and the `az` binds take no lock) could drop a domain or fail with `ContainerAppOperationInProgress`. Every hostname write now goes through `infra/hostname.sh`, which holds an exclusive `flock` (taken through `perl`, since macOS has no `flock(1)`) that the kernel releases when the process dies, so a killed apply leaves no stale lock. A failed hostname lookup fails the script instead of reading as "not attached". Hostnames are attached by that script instead of `azurerm_container_app_custom_domain`; a `removed` block stops managing the old resources without touching the live hostnames.
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed
