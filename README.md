@@ -63,7 +63,8 @@ against golden fixtures recorded from the live PHP system, and
 ## Deploying
 
 Infra lives in `infra/` (Terraform, `azurerm` provider). The app serves
-`spacestate.pixelbar.nl`, the default of `custom_domains`.
+`spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of
+`custom_domains`.
 
 ```sh
 cd infra

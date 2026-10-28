@@ -13,7 +13,7 @@ variable "resource_group_name" {
 variable "custom_domains" {
   description = <<-EOT
     Hostnames to bind to the Container App, each with a managed certificate.
-    Defaults to the production hostname, so a plain apply keeps it bound.
+    Defaults to the production hostnames, so a plain apply keeps them bound.
 
     DNS lives outside Azure, so adding a domain is two phases:
       1. Create its records manually from the outputs (see outputs.tf): a
@@ -23,7 +23,7 @@ variable "custom_domains" {
          before then fails the certificate's validation.
   EOT
   type        = set(string)
-  default     = ["spacestate.pixelbar.nl"]
+  default     = ["spacestate.pixelbar.nl", "spaceapi.pixelbar.nl"]
 }
 
 variable "container_image" {

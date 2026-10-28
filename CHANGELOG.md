@@ -13,17 +13,19 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Legacy parity contract tests (`just test-contract`, `test/contract/`): the SpaceAPI document, `/spacestate.php` and the toggle replies are compared against golden fixtures recorded `GET`-only from the live PHP system (`test/fixtures/legacy/`, indexed by `recording.json`). `/spacestate.php` and the toggle bodies must be byte-identical; the SpaceAPI document must be JSON-identical, pinned so that key order and PHP's `\/` escaping are the only byte differences possible. CORS, `Cache-Control` and the `Content-Type` media type are asserted from the recording. Every intentional difference is listed in `test/contract/README.md` and asserted, so the list can't go stale. The tests use in-memory stores, so they need no Azurite and run in the CI `check` job.
 
-### Changed
-
-- A `terraform apply` that forgets the Sentry DSN now fails instead of silently deploying with error reporting off: `sentry_dsn` is validated against the new `sentry_enabled` variable (default `true`), so an empty DSN stops the plan with a message naming the variable. Running without Sentry stays possible but has to be deliberate — `-var="sentry_enabled=false"`, which drops the `sentry-dsn` secret and the `SENTRY_DSN` env var. A `sentry_enabled` output says which way the stack stands, and `*.tfvars` is now gitignored so `infra/sentry.auto.tfvars` can hold the DSN for every apply (README: "Observability").
-- The Container App can serve more than one custom domain. `custom_domain` (a string) and the `bind_custom_domain` switch are replaced by `custom_domains`, a set of hostnames that each get a managed certificate and binding; a domain goes in once its CNAME and `asuid` TXT records have propagated (README: "Deploying"). Taking a domain out deletes its hostname from the app before its certificate, which Azure would otherwise refuse to delete while still bound (`CertificateInUse`).
-- The deployment is now production on `spacestate.pixelbar.nl`, the default of `custom_domains`. The next apply binds it and removes the `spacestate-dev.pixelbar.nl` hostname and certificate, so point `spacestate.pixelbar.nl` at the Container App first.
-- The app says at startup whether it reports to Sentry: `initSentry()` returns that, the `spacestate started` log carries `sentryEnabled`, and a start without a DSN also logs a `Sentry is disabled` warning. A blank `SENTRY_DSN` counts as unset. The DSN itself is never logged.
+## [0.5.1] - 2026-10-28
 
 ### Fixed
 
 - History queries read at most 12 monthly partitions per page, including empty ones, and resume through a continuation token. Wide date ranges no longer allocate every month or trigger unbounded storage work; unsafe cursors and reversed ranges return 400.
 - `terraform apply` failed on a domain that was never bound before: Azure refuses to issue a managed certificate (`RequireCustomHostnameInEnvironment`) until the hostname is attached to an app, while the hostname binding depended on the certificate. The apply now attaches the hostname without a certificate, issues the managed certificate, then binds it with `az containerapp hostname bind` (`azurerm_container_app_custom_domain` cannot take a certificate created after it), and ignores later changes to the binding fields so the next plan does not revert it. This fix (#15) was applied to production but merged into a branch that had already landed, so it never reached `main` until now.
+
+### Changed
+
+- A `terraform apply` that forgets the Sentry DSN now fails instead of silently deploying with error reporting off: `sentry_dsn` is validated against the new `sentry_enabled` variable (default `true`), so an empty DSN stops the plan with a message naming the variable. Running without Sentry stays possible but has to be deliberate — `-var="sentry_enabled=false"`, which drops the `sentry-dsn` secret and the `SENTRY_DSN` env var. A `sentry_enabled` output says which way the stack stands, and `*.tfvars` is now gitignored so `infra/sentry.auto.tfvars` can hold the DSN for every apply (README: "Observability").
+- The Container App can serve more than one custom domain. `custom_domain` (a string) and the `bind_custom_domain` switch are replaced by `custom_domains`, a set of hostnames that each get a managed certificate and binding; a domain goes in once its CNAME and `asuid` TXT records have propagated (README: "Deploying"). Taking a domain out deletes its hostname from the app before its certificate, which Azure would otherwise refuse to delete while still bound (`CertificateInUse`).
+- The deployment is now production on `spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of `custom_domains`. The next apply binds them and removes the `spacestate-dev.pixelbar.nl` hostname and certificate, so point both at the Container App first.
+- The app says at startup whether it reports to Sentry: `initSentry()` returns that, the `spacestate started` log carries `sentryEnabled`, and a start without a DSN also logs a `Sentry is disabled` warning. A blank `SENTRY_DSN` counts as unset. The DSN itself is never logged.
 
 ## [0.5.0] - 2026-10-20
 
@@ -79,7 +81,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Sentry continuous profiling via `@sentry/profiling-node`, configured in `src/observability/sentry.ts` and controlled by `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILE_SESSION_SAMPLE_RATE`. A no-op when `SENTRY_DSN` is unset.
 
 
-[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/pixelbar/spacestate/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pixelbar/spacestate/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/pixelbar/spacestate/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pixelbar/spacestate/compare/v0.3.0...v0.4.0
