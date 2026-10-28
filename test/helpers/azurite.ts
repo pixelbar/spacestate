@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { TableServiceClient } from "@azure/data-tables";
 
@@ -12,6 +15,8 @@ export function applyAzuriteEnv(): void {
   process.env.API_KEYS_CONFIG_SOURCE ??= "file://./config/api-keys.sample.yaml";
   process.env.LEGACY_CONFIG_SOURCE ??= "file://./config/legacy.sample.yaml";
   process.env.NOTIFICATIONS_CONFIG_SOURCE ??= "file://./config/notifications.sample.yaml";
+  // The webhook registry is written to, so every test file gets its own empty file.
+  process.env.WEBHOOKS_CONFIG_SOURCE ??= `file://${join(mkdtempSync(join(tmpdir(), "spacestate-test-")), "webhooks.yaml")}`;
 }
 
 /** Deletes and recreates the test tables so each integration run starts from a clean slate. */

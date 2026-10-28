@@ -1,10 +1,10 @@
 /**
  * Sync the live config blobs with config/prod/ (gitignored), always showing a diff first.
- * Usage: just pull [name] | just push [name] | just edit <name>   (name: spaceapi|api-keys|legacy|notifications; omit for all)
+ * Usage: just pull [name] | just push [name] | just edit <name>   (name: spaceapi|api-keys|legacy|notifications|webhooks; omit for all)
  *   pull  diff remote → local, ask before overwriting the local file
  *   push  validate local, diff remote → local, ask before overwriting the remote blob
  *   edit  like push, but opens the remote version in $EDITOR first (result is also saved locally)
- * Options: [--account NAME] [--container NAME] [--dry-run]
+ * Options: [--account NAME] [--container NAME] [--dry-run]   (--container defaults to "config", or "webhooks" for webhooks)
  * Needs the Azure CLI (`az login`). The account defaults to $SPACESTATE_STORAGE_ACCOUNT.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -14,20 +14,23 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { load as parseYaml } from "js-yaml";
 import type { ZodType } from "zod";
-import { apiKeysConfigSchema, legacyConfigSchema, spaceApiConfigSchema } from "../src/config/schema.ts";
+import { apiKeysConfigSchema, legacyConfigSchema, spaceApiConfigSchema, webhooksConfigSchema } from "../src/config/schema.ts";
 import { notificationsConfigSchema } from "../src/notifications/config.ts";
 
 const LOCAL_DIR = "config/prod";
 
-const CONFIGS: Record<string, { blob: string; schema: ZodType }> = {
+// `container` overrides the --container default ("config") for documents that live elsewhere.
+const CONFIGS: Record<string, { blob: string; schema: ZodType; container?: string }> = {
   spaceapi: { blob: "spaceapi.json", schema: spaceApiConfigSchema },
   "api-keys": { blob: "api-keys.yaml", schema: apiKeysConfigSchema },
   legacy: { blob: "legacy.yaml", schema: legacyConfigSchema },
   notifications: { blob: "notifications.yaml", schema: notificationsConfigSchema },
+  // Written by the app itself (POST /api/v1/webhooks); edit with care, the live copy may be newer than your pull.
+  webhooks: { blob: "webhooks.yaml", schema: webhooksConfigSchema, container: "webhooks" },
 };
 
 type Mode = "pull" | "push" | "edit";
-type Args = { mode: Mode; names: string[]; account?: string; container: string; dryRun: boolean };
+type Args = { mode: Mode; names: string[]; account?: string; container?: string; dryRun: boolean };
 
 const dir = mkdtempSync(join(tmpdir(), "spacestate-config-"));
 
@@ -50,16 +53,17 @@ async function run(args: Args): Promise<void> {
   }
 
   for (const name of args.names) {
-    const { blob, schema } = CONFIGS[name];
+    const { blob, schema, ...entry } = CONFIGS[name];
+    const container = args.container ?? entry.container ?? "config";
     const remote = join(dir, `remote-${blob}`);
     const local = join(LOCAL_DIR, blob);
     const blobArgs = [
       "--account-name", account,
-      "--container-name", args.container,
+      "--container-name", container,
       "--name", blob,
       "--auth-mode", "login",
     ];
-    const target = `${account}/${args.container}/${blob}`;
+    const target = `${account}/${container}/${blob}`;
 
     process.stdout.write(`\n== ${blob} ==\n`);
     const exists = download(blobArgs, remote);
@@ -183,7 +187,7 @@ function parseArgs(argv: string[]): Args {
   const usage = `Usage: config <pull|push|edit> [${Object.keys(CONFIGS).join("|")}] [--account NAME] [--container NAME] [--dry-run]`;
   const positional: string[] = [];
   let account: string | undefined;
-  let container = "config";
+  let container: string | undefined;
   let dryRun = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];

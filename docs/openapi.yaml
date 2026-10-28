@@ -70,6 +70,34 @@ tags:
     description: >-
       The space's SpaceAPI document — the shared format hackerspace status
       tools read to show whether we're open.
+  - name: Webhooks
+    description: |
+      Register a URL to be told when the space opens or closes, instead of
+      polling `GET /api/v1/state`. Managing webhooks needs a `write` API key, and each key sees and
+      manages only the webhooks it registered: another key's webhooks are
+      absent from the list and answer `404` on delete.
+
+      On every recorded state change (not on requests that were already in
+      the requested state) the service sends `POST <your url>` with a
+      [`WebhookPayload`](#/components/schemas/WebhookPayload) JSON body.
+      It does not wait for you: the request that changed the state returns
+      first.
+
+      **Verifying a delivery.** Registration returns a `secret`, once. Each
+      delivery carries `X-Spacestate-Timestamp` (unix seconds) and
+      `X-Spacestate-Signature: sha256=<hex>`, the HMAC-SHA256 of
+      `<timestamp>.<raw body>` keyed with your secret. Recompute it over the
+      raw bytes, compare in constant time, and reject timestamps that are
+      far from your clock to stop replays.
+
+      **Delivery rules.** Answer `2xx` within 5 seconds. A timeout, network
+      error, `5xx`, `408` or `429` is retried up to three more times (after
+      1 s, 5 s and 30 s) with the same `deliveryId`; any other status is
+      final. Redirects are not followed. Changes reach one URL in order: the
+      next is not sent until the previous one was delivered or given up on.
+      Still compare `changedAt` before acting, because a restart of the
+      service can drop a pending retry. Targets must be public `https://`
+      URLs.
   - name: Operations
     description: Health checks for the service itself.
   - name: Legacy
@@ -196,6 +224,112 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List registered webhooks
+      description: >-
+        Requires an API key with the `write` role. Lists only the webhooks
+        registered by this key; secrets are never listed.
+      operationId: listWebhooks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Registered webhooks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [webhooks]
+                properties:
+                  webhooks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Webhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Webhooks]
+      summary: Register a webhook
+      description: |
+        Requires an API key with the `write` role. The response contains the
+        signing `secret`; it is not retrievable later, so store it now.
+      operationId: registerWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookRegistration" }
+            example: { url: "https://hooks.example.org/pixelbar", description: "Door sign" }
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisteredWebhook" }
+        "400":
+          description: >-
+            Body failed validation (`invalid_body`), or the URL is not an
+            acceptable target (`invalid_url`: not https, has credentials, or
+            points at an internal host).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [invalid_body, invalid_url] }
+                  message: { type: string, examples: ["url must be an https:// URL"] }
+                  details:
+                    type: array
+                    description: Zod issues, for `invalid_body`.
+                    items: { type: object, additionalProperties: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: >-
+            You already registered that URL (`already_registered`, with the
+            existing `id`), or you have 20 webhooks (`too_many_webhooks`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [already_registered, too_many_webhooks] }
+                  id: { type: string, examples: [wh_3f9a1c2b7d4e] }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/webhooks/{id}:
+    delete:
+      tags: [Webhooks]
+      summary: Remove a webhook
+      description: >-
+        Requires an API key with the `write` role. Only the key that
+        registered a webhook can remove it.
+      operationId: deleteWebhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, examples: [wh_3f9a1c2b7d4e] }
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No webhook with that id registered by this key (another key's webhook looks the same).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, const: not_found }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /healthz:
@@ -424,6 +558,23 @@ paths:
             Location: { schema: { type: string, const: "https://www.pixelbar.nl/" } }
         "500": { $ref: "#/components/responses/InternalError" }
 
+webhooks:
+  stateChanged:
+    post:
+      tags: [Webhooks]
+      summary: Space state changed (sent to your URL)
+      description: >-
+        What a registered webhook receives. See the Webhooks tag for
+        signature verification and retries.
+      operationId: onStateChanged
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookPayload" }
+      responses:
+        "2XX": { description: Delivery accepted. Anything else is retried or dropped as described under Webhooks. }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -431,7 +582,7 @@ components:
       scheme: bearer
       description: >-
         An API key issued by the Pixelbar board. A `read` key can fetch
-        history; a `write` key can also change the state.
+        history; a `write` key can also change the state and manage webhooks.
     legacyToken:
       type: apiKey
       in: query
@@ -534,6 +685,73 @@ components:
           type: string
           description: Present when more results exist; pass back as `continuationToken`.
           examples: ["1!52!RGF0ZQ--"]
+    Webhook:
+      type: object
+      required: [id, url, createdAt, createdBy]
+      properties:
+        id: { type: string, examples: [wh_3f9a1c2b7d4e] }
+        url: { type: string, format: uri, examples: ["https://hooks.example.org/pixelbar"] }
+        description: { type: string, examples: [Door sign] }
+        createdAt:
+          type: string
+          format: date-time
+          examples: ["2026-10-20T18:00:00.000Z"]
+        createdBy:
+          type: string
+          description: Id of the API key that registered it.
+          examples: [ha-bridge]
+    WebhookRegistration:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Public `https://` URL that will receive the `POST`.
+          examples: ["https://hooks.example.org/pixelbar"]
+        description:
+          type: string
+          maxLength: 200
+          description: Who to contact when it breaks.
+          examples: [Door sign]
+    RegisteredWebhook:
+      allOf:
+        - $ref: "#/components/schemas/Webhook"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: HMAC key for verifying deliveries. Shown only in this response.
+              examples: ["Zk3n0q1v8mXw5cT2bY7uJ4aR9sLpD6eH-gFiOtNhVxM"]
+    WebhookPayload:
+      type: object
+      description: >-
+        The JSON body of each delivery, sent with `X-Spacestate-Event:
+        state.changed`, `X-Spacestate-Delivery` (= `deliveryId`),
+        `X-Spacestate-Timestamp` and `X-Spacestate-Signature`.
+      required: [event, deliveryId, state, previousState, changedAt, changedBy, method, source]
+      properties:
+        event: { type: string, const: state.changed }
+        deliveryId:
+          type: string
+          format: uuid
+          description: Stable across retries of one delivery; use it to deduplicate.
+          examples: ["6f1c0d52-8f0e-4a3e-9d3b-2c1a7e4b5f10"]
+        state: { $ref: "#/components/schemas/SpaceState" }
+        previousState: { $ref: "#/components/schemas/SpaceState" }
+        changedAt:
+          type: string
+          format: date-time
+          examples: ["2026-10-20T18:00:00.000Z"]
+        changedBy:
+          type: string
+          examples: [alice]
+        method:
+          type: string
+          examples: [button]
+        source: { $ref: "#/components/schemas/ChangeSource" }
     ValidationError:
       type: object
       required: [error, details]

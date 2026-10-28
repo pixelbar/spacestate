@@ -16,6 +16,9 @@ import { legacyPlugin } from "./legacy/plugin.js";
 import { NO_NOTIFICATIONS, notificationsConfigSchema, type NotificationsConfig } from "./notifications/config.js";
 import { ConfiguredChannels } from "./notifications/configuredChannels.js";
 import { NotificationDispatcher } from "./notifications/dispatcher.js";
+import { WebhookRegistry } from "./notifications/webhooks/registry.js";
+import { WebhookSubscribers } from "./notifications/webhooks/subscribers.js";
+import { policyFromEnv } from "./notifications/webhooks/targetPolicy.js";
 import { healthPlugin } from "./plugins/health.js";
 import { registerErrorHandler } from "./plugins/errorHandler.js";
 import { TableCurrentStateStore } from "./storage/currentStateTable.js";
@@ -29,6 +32,7 @@ export interface BuiltApp {
   legacyStore: ConfigStore<LegacyConfig>;
   notificationsStore: ConfigStore<NotificationsConfig>;
   notifications: NotificationDispatcher;
+  webhookRegistry: WebhookRegistry;
 }
 
 export async function buildApp(): Promise<BuiltApp> {
@@ -51,6 +55,13 @@ export async function buildApp(): Promise<BuiltApp> {
     yamlParser(notificationsConfigSchema),
     { fallback: NO_NOTIFICATIONS },
   );
+  // Written by the app (POST /api/v1/webhooks), so unlike the stores above it
+  // lives in its own blob container the identity may write to. A missing
+  // document just means no webhooks yet.
+  const webhookRegistry = await WebhookRegistry.create(
+    createConfigSource(process.env.WEBHOOKS_CONFIG_SOURCE ?? "file://./config/prod/webhooks.yaml"),
+  );
+  const webhookPolicy = policyFromEnv(process.env);
 
   const tableClients = createTableClients();
   const historyStore = new TableHistoryStore(tableClients.stateHistory);
@@ -61,6 +72,7 @@ export async function buildApp(): Promise<BuiltApp> {
 
   const notifications = new NotificationDispatcher([
     new ConfiguredChannels(notificationsStore, { space: () => spaceApiStore.get().space }),
+    new WebhookSubscribers(webhookRegistry, { policy: webhookPolicy }),
   ]);
   stateService.onChange((event) => notifications.notify(event));
 
@@ -68,10 +80,18 @@ export async function buildApp(): Promise<BuiltApp> {
 
   registerErrorHandler(app);
   await app.register(healthPlugin);
-  await app.register(apiPlugin, { spaceApiStore, apiKeyStore, stateService, historyService });
+  await app.register(apiPlugin, {
+    spaceApiStore,
+    apiKeyStore,
+    stateService,
+    historyService,
+    webhookRegistry,
+    webhookPolicy,
+  });
   await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });
 
   app.addHook("onClose", async () => {
+    webhookRegistry.close();
     await Promise.all([
       spaceApiStore.close(),
       apiKeyStore.close(),
@@ -81,5 +101,5 @@ export async function buildApp(): Promise<BuiltApp> {
     ]);
   });
 
-  return { app, spaceApiStore, apiKeyStore, legacyStore, notificationsStore, notifications };
+  return { app, spaceApiStore, apiKeyStore, legacyStore, notificationsStore, notifications, webhookRegistry };
 }
