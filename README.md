@@ -62,19 +62,30 @@ against golden fixtures recorded from the live PHP system, and
 
 ## Deploying
 
-Infra lives in `infra/` (Terraform, `azurerm` provider). The domain is on
-external DNS, so the custom domain rollout is two phases:
+Infra lives in `infra/` (Terraform, `azurerm` provider). The app serves
+`spacestate.pixelbar.nl`, the default of `custom_domains`.
 
 ```sh
 cd infra
 terraform init -backend-config=backend.azurerm.hcl
 # Once, so every apply from this clone keeps Sentry wired (see "Observability"):
 echo 'sentry_dsn = "https://<key>@<org>.ingest.de.sentry.io/<project>"' > sentry.auto.tfvars
-terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
-# read the `domain_verification_id` and `default_fqdn` outputs, create the
-# TXT + CNAME records at your DNS provider, wait for them to propagate, then:
-terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>" -var="bind_custom_domain=true"
+terraform apply -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
 ```
+
+Domains are on external DNS (TransIP), so adding one is two phases: create
+its records, then add it to `custom_domains`. To add a domain, create these at its DNS provider (the values are the same for
+every domain, from `terraform output`):
+
+| Type | Name | Value |
+| --- | --- | --- |
+| `CNAME` | `<host>` | `default_fqdn` |
+| `TXT` | `asuid.<host>` | `domain_verification_id` |
+
+Wait for them to propagate, add the host to `custom_domains`, and apply: that
+issues its managed certificate and binds it. A bare apex can't take a CNAME;
+point an `A` record at `environment_static_ip` instead, but the certificate is
+validated by CNAME, so an apex has not been tried.
 
 State is remote: storage account `pixelbartfstate`, container `spacestate`
 (see `infra/backend.azurerm.hcl`). Initialise with
