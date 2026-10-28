@@ -10,9 +10,20 @@ variable "resource_group_name" {
   default     = "pixelbar-spacestate"
 }
 
-variable "custom_domain" {
-  description = "Hostname to bind to the Container App, e.g. spacestate.pixelbar.nl. DNS lives outside Azure, so the matching records must be created manually — see outputs.tf."
-  type        = string
+variable "custom_domains" {
+  description = <<-EOT
+    Hostnames to bind to the Container App, each with a managed certificate.
+    Defaults to the production hostname, so a plain apply keeps it bound.
+
+    DNS lives outside Azure, so adding a domain is two phases:
+      1. Create its records manually from the outputs (see outputs.tf): a
+         CNAME to `default_fqdn` and a TXT at asuid.<host> holding
+         `domain_verification_id`. Both outputs are the same for every domain.
+      2. Once DNS has propagated, add the hostname here and apply. Listing it
+         before then fails the certificate's validation.
+  EOT
+  type        = set(string)
+  default     = ["spacestate.pixelbar.nl"]
 }
 
 variable "container_image" {
@@ -56,16 +67,4 @@ variable "sentry_environment" {
   description = "Sentry environment tag."
   type        = string
   default     = "production"
-}
-
-variable "bind_custom_domain" {
-  description = <<-EOT
-    Two-phase rollout switch for the custom domain, required because DNS is external:
-      1. Apply with this set to false. Read the `domain_verification_id` and
-         `default_fqdn` outputs and create the TXT/CNAME records manually.
-      2. Once DNS has propagated, set this to true and apply again to create
-         the managed certificate and bind the domain.
-  EOT
-  type        = bool
-  default     = false
 }
