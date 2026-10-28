@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Legacy parity contract tests (`just test-contract`, `test/contract/`): the SpaceAPI document, `/spacestate.php` and the toggle replies are compared against golden fixtures recorded `GET`-only from the live PHP system (`test/fixtures/legacy/`, indexed by `recording.json`). `/spacestate.php` and the toggle bodies must be byte-identical; the SpaceAPI document must be JSON-identical, pinned so that key order and PHP's `\/` escaping are the only byte differences possible. CORS, `Cache-Control` and the `Content-Type` media type are asserted from the recording. Every intentional difference is listed in `test/contract/README.md` and asserted, so the list can't go stale. The tests use in-memory stores, so they need no Azurite and run in the CI `check` job.
 
+### Fixed
+
+- A `terraform apply` that adds or removes more than one domain no longer races on the Container App. Each hostname write rewrites the app's whole domain list, and the parallel writes (the provider's deletes and the `az` binds take no lock) could drop a domain or fail with `ContainerAppOperationInProgress`. Every hostname write now goes through `infra/hostname.sh`, which holds an exclusive `flock` (taken through `perl`, since macOS has no `flock(1)`) that the kernel releases when the process dies, so a killed apply leaves no stale lock. A failed hostname lookup fails the script instead of reading as "not attached". Hostnames are attached by that script instead of `azurerm_container_app_custom_domain`; a `removed` block stops managing the old resources without touching the live hostnames.
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed

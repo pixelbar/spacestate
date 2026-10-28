@@ -8,18 +8,37 @@
 #      the hostname needs, so there is no HTTP validation path to keep alive
 #      on a scale-to-zero app)
 #   3. bind the certificate to the hostname
-resource "azurerm_container_app_custom_domain" "spacestate" {
-  for_each         = var.custom_domains
-  name             = each.key
-  container_app_id = azurerm_container_app.spacestate.id
+#
+# Steps 1 and 3 go through hostname.sh rather than azurerm_container_app_custom_domain:
+# every hostname write rewrites the app's whole domain list, the provider only
+# locks its creates against each other, and the bind has to be done with the
+# az CLI anyway. One script holding one lock is what keeps an apply that
+# touches several domains from losing a write.
+locals {
+  hostname_script = {
+    script         = "${path.module}/hostname.sh"
+    app            = azurerm_container_app.spacestate.name
+    resource_group = azurerm_resource_group.spacestate.name
+  }
+}
 
-  # Step 3 sets these out of band; without ignore_changes the next plan would
-  # try to revert the hostname to Disabled.
-  lifecycle {
-    ignore_changes = [
-      certificate_binding_type,
-      container_app_environment_certificate_id,
-    ]
+resource "terraform_data" "hostname" {
+  for_each = var.custom_domains
+
+  triggers_replace = [each.key]
+
+  # Destroy provisioners can only read self.
+  input = local.hostname_script
+
+  provisioner "local-exec" {
+    command = "${self.input.script} add ${self.input.app} ${self.input.resource_group} ${each.key}"
+  }
+
+  # Normally a no-op: bind_certificate's destroy has already taken the
+  # hostname off. Covers a domain removed before its certificate was bound.
+  provisioner "local-exec" {
+    when    = destroy
+    command = "${self.input.script} delete ${self.input.app} ${self.input.resource_group} ${each.key}"
   }
 }
 
@@ -30,12 +49,9 @@ resource "azurerm_container_app_environment_managed_certificate" "spacestate" {
   subject_name                 = each.key
   domain_control_validation    = "CNAME"
 
-  depends_on = [azurerm_container_app_custom_domain.spacestate]
+  depends_on = [terraform_data.hostname]
 }
 
-# azurerm_container_app_custom_domain can't take a certificate that is created
-# after it (see above), so the binding uses the az CLI, the same login the
-# state backend already requires.
 resource "terraform_data" "bind_certificate" {
   for_each = var.custom_domains
 
@@ -44,42 +60,33 @@ resource "terraform_data" "bind_certificate" {
     each.key,
   ]
 
-  # Destroy provisioners can only read self, so the unbind below reads these.
-  input = {
-    app            = azurerm_container_app.spacestate.name
-    resource_group = azurerm_resource_group.spacestate.name
-  }
+  input = local.hostname_script
 
   provisioner "local-exec" {
-    command = <<-EOT
-      az containerapp hostname bind \
-        --name ${azurerm_container_app.spacestate.name} \
-        --resource-group ${azurerm_resource_group.spacestate.name} \
-        --hostname ${each.key} \
-        --environment ${azurerm_container_app_environment.spacestate.name} \
-        --certificate ${azurerm_container_app_environment_managed_certificate.spacestate[each.key].id} \
-        --output none
-    EOT
+    command = join(" ", [
+      self.input.script, "bind", self.input.app, self.input.resource_group, each.key,
+      azurerm_container_app_environment.spacestate.name,
+      azurerm_container_app_environment_managed_certificate.spacestate[each.key].id,
+    ])
   }
 
   # Removing a domain destroys this, then the certificate, then the hostname
   # (the reverse of creation). Azure refuses to delete a certificate that is
-  # still bound (CertificateInUse), and the binding was made out of band, so
-  # take the hostname off the app here first. The hostname resource's own
-  # delete then finds nothing left to remove.
-  #
-  # Instances created before `input` existed have it null; the fallbacks are
-  # the app name from container_app.tf and the resource group from the
-  # certificate ID.
+  # still bound (CertificateInUse), and there is no az command to unbind one,
+  # so take the hostname off the app here first.
   provisioner "local-exec" {
     when    = destroy
-    command = <<-EOT
-      az containerapp hostname delete \
-        --name ${try(self.input.app, "spacestate")} \
-        --resource-group ${try(self.input.resource_group, split("/", self.triggers_replace[0])[4])} \
-        --hostname ${self.triggers_replace[1]} \
-        --yes \
-        --output none
-    EOT
+    command = "${self.input.script} delete ${self.input.app} ${self.input.resource_group} ${self.triggers_replace[1]}"
+  }
+}
+
+# Hostnames were azurerm_container_app_custom_domain until hostname.sh took
+# over attaching them. Forget them rather than destroy them: the live
+# hostnames stay, and terraform_data.hostname's add finds them already there.
+removed {
+  from = azurerm_container_app_custom_domain.spacestate
+
+  lifecycle {
+    destroy = false
   }
 }
