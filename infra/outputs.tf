@@ -4,7 +4,7 @@ output "default_fqdn" {
 }
 
 output "domain_verification_id" {
-  description = "Value for the manual asuid.<subdomain> TXT record, required before bind_custom_domain can be set to true."
+  description = "Value for the manual asuid.<host> TXT record, required before a host can be added to custom_domains. Shared by every domain on the environment."
   value       = azurerm_container_app_environment.spacestate.custom_domain_verification_id
 }
 
