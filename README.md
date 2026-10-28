@@ -266,6 +266,31 @@ reason Mastodon gives is in the `Notification delivery failed` log. Turn off
 whatever else posts the state to the account (the VPS that does it today)
 when enabling this, or every change is announced twice.
 
+### Twitter / X
+
+Posts to one X account through the v2 API, signed with OAuth 1.0a. In the X
+developer portal, give the app Read and Write permission, then generate the
+posting account's access token and secret (regenerate them if they predate the
+permission change):
+
+```yaml
+channels:
+  - type: twitter
+    id: pixelbar-x
+    consumerKey: "…"          # the app's API key
+    consumerSecret: "…"       # and its secret
+    accessToken: "…"          # the account's access token
+    accessTokenSecret: "…"    # and its secret
+```
+
+X refuses a post identical to a recent one ("duplicate content", 403, not
+retried), and the space opens and closes most days, so this channel's default
+messages are `{space} opened at {time}.` / `{space} closed at {time}.`.
+Document-wide `messages` replace those defaults too, so if you set them, keep a
+`{time}` in this channel's own. The same rule stops a retry after a lost
+response from posting twice. X's API quotas change often; check the developer
+portal that the account's tier allows a few posts a day.
+
 ## Observability
 
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
