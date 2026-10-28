@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-28
+
 ### Fixed
 
 - History queries read at most 12 monthly partitions per page, including empty ones, and resume through a continuation token. Wide date ranges no longer allocate every month or trigger unbounded storage work; unsafe cursors and reversed ranges return 400.
@@ -75,7 +77,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Sentry continuous profiling via `@sentry/profiling-node`, configured in `src/observability/sentry.ts` and controlled by `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILE_SESSION_SAMPLE_RATE`. A no-op when `SENTRY_DSN` is unset.
 
 
-[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/pixelbar/spacestate/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pixelbar/spacestate/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/pixelbar/spacestate/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pixelbar/spacestate/compare/v0.3.0...v0.4.0
