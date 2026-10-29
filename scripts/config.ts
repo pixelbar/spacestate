@@ -1,6 +1,6 @@
 /**
  * Sync the live config blobs with config/prod/ (gitignored), always showing a diff first.
- * Usage: just pull [name] | just push [name] | just edit <name>   (name: spaceapi|api-keys|legacy; omit for all)
+ * Usage: just pull [name] | just push [name] | just edit <name>   (name: spaceapi|api-keys|legacy|notifications; omit for all)
  *   pull  diff remote → local, ask before overwriting the local file
  *   push  validate local, diff remote → local, ask before overwriting the remote blob
  *   edit  like push, but opens the remote version in $EDITOR first (result is also saved locally)
@@ -15,6 +15,7 @@ import { createInterface } from "node:readline/promises";
 import { load as parseYaml } from "js-yaml";
 import type { ZodType } from "zod";
 import { apiKeysConfigSchema, legacyConfigSchema, spaceApiConfigSchema } from "../src/config/schema.ts";
+import { notificationsConfigSchema } from "../src/notifications/config.ts";
 
 const LOCAL_DIR = "config/prod";
 
@@ -22,6 +23,7 @@ const CONFIGS: Record<string, { blob: string; schema: ZodType }> = {
   spaceapi: { blob: "spaceapi.json", schema: spaceApiConfigSchema },
   "api-keys": { blob: "api-keys.yaml", schema: apiKeysConfigSchema },
   legacy: { blob: "legacy.yaml", schema: legacyConfigSchema },
+  notifications: { blob: "notifications.yaml", schema: notificationsConfigSchema },
 };
 
 type Mode = "pull" | "push" | "edit";

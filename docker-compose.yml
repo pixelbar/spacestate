@@ -12,6 +12,7 @@ services:
       SPACEAPI_CONFIG_SOURCE: "file:///app/config/spaceapi.sample.json"
       API_KEYS_CONFIG_SOURCE: "file:///app/config/api-keys.sample.yaml"
       LEGACY_CONFIG_SOURCE: "file:///app/config/legacy.sample.yaml"
+      NOTIFICATIONS_CONFIG_SOURCE: "file:///app/config/notifications.sample.yaml"
       # Well-known Azurite development credential, not a secret — published
       # by Microsoft for local emulator use.
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://azurite:10002/devstoreaccount1;"

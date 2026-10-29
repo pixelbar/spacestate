@@ -13,6 +13,9 @@ import { createConfigSource } from "./config/sources/index.js";
 import { HistoryService } from "./domain/history/service.js";
 import { StateService } from "./domain/state/service.js";
 import { legacyPlugin } from "./legacy/plugin.js";
+import { NO_NOTIFICATIONS, notificationsConfigSchema, type NotificationsConfig } from "./notifications/config.js";
+import { ConfiguredChannels } from "./notifications/configuredChannels.js";
+import { NotificationDispatcher } from "./notifications/dispatcher.js";
 import { healthPlugin } from "./plugins/health.js";
 import { registerErrorHandler } from "./plugins/errorHandler.js";
 import { TableCurrentStateStore } from "./storage/currentStateTable.js";
@@ -24,6 +27,8 @@ export interface BuiltApp {
   spaceApiStore: ConfigStore<SpaceApiConfig>;
   apiKeyStore: ConfigStore<ApiKeysConfig>;
   legacyStore: ConfigStore<LegacyConfig>;
+  notificationsStore: ConfigStore<NotificationsConfig>;
+  notifications: NotificationDispatcher;
 }
 
 export async function buildApp(): Promise<BuiltApp> {
@@ -39,6 +44,13 @@ export async function buildApp(): Promise<BuiltApp> {
     createConfigSource(process.env.LEGACY_CONFIG_SOURCE ?? "file://./config/legacy.sample.yaml"),
     yamlParser(legacyConfigSchema),
   );
+  // Optional, unlike the stores above: announcing a change is a side feature,
+  // so a missing or broken document means no announcements, not no service.
+  const notificationsStore = await ConfigStore.create(
+    createConfigSource(process.env.NOTIFICATIONS_CONFIG_SOURCE ?? "file://./config/notifications.sample.yaml"),
+    yamlParser(notificationsConfigSchema),
+    { fallback: NO_NOTIFICATIONS },
+  );
 
   const tableClients = createTableClients();
   const historyStore = new TableHistoryStore(tableClients.stateHistory);
@@ -46,6 +58,11 @@ export async function buildApp(): Promise<BuiltApp> {
 
   const stateService = new StateService(currentStateStore, historyStore);
   const historyService = new HistoryService(historyStore);
+
+  const notifications = new NotificationDispatcher([
+    new ConfiguredChannels(notificationsStore, { space: () => spaceApiStore.get().space }),
+  ]);
+  stateService.onChange((event) => notifications.notify(event));
 
   const app = Fastify({ logger: true });
 
@@ -55,8 +72,14 @@ export async function buildApp(): Promise<BuiltApp> {
   await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });
 
   app.addHook("onClose", async () => {
-    await Promise.all([spaceApiStore.close(), apiKeyStore.close(), legacyStore.close()]);
+    await Promise.all([
+      spaceApiStore.close(),
+      apiKeyStore.close(),
+      legacyStore.close(),
+      notificationsStore.close(),
+      notifications.close(),
+    ]);
   });
 
-  return { app, spaceApiStore, apiKeyStore, legacyStore };
+  return { app, spaceApiStore, apiKeyStore, legacyStore, notificationsStore, notifications };
 }

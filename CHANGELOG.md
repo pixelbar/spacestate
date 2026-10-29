@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- State changes are announced through a generic notification system (`src/notifications/`). Every recorded change, from `/api/v1` or the legacy endpoints, is handed to each subscriber without delaying the response: each attempt times out (10 s by default), failures are retried after 1 s, 5 s and 30 s unless the subscriber says retrying cannot help, and deliveries to one subscriber stay in order. Outcomes are logged to Sentry. Channel types plug in through a registry, and the operator lists channels in `notifications.yaml`, a new optional config blob (`NOTIFICATIONS_CONFIG_SOURCE`, `just edit notifications`) with per-channel message templates (`{space}`, `{state}`, `{time}`, …). Without that blob the app runs as before and announces nothing; Terraform adds the env var, and an upload takes effect within five minutes. README: "Notifications".
+- The docs site has a Maintainers section (pixelbar.nl/spacestate/maintainers/), apart from the API reference and with its own sidebar: hand-written pages for whoever runs the service, starting with how notifications work, how to configure them, what their log messages mean and how to add a channel type. Pages can draw diagrams in ```` ```mermaid ```` fences, rendered in the Pixel colours and redrawn when the colour mode flips.
+
 ### Fixed
 
 - A `terraform apply` that adds or removes more than one domain no longer races on the Container App. Each hostname write rewrites the app's whole domain list, and the parallel writes (the provider's deletes and the `az` binds take no lock) could drop a domain or fail with `ContainerAppOperationInProgress`. Every hostname write now goes through `infra/hostname.sh`, which holds an exclusive `flock` (taken through `perl`, since macOS has no `flock(1)`) that the kernel releases when the process dies, so a killed apply leaves no stale lock. A failed hostname lookup fails the script instead of reading as "not attached". Hostnames are attached by that script instead of `azurerm_container_app_custom_domain`; a `removed` block stops managing the old resources without touching the live hostnames.

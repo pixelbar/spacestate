@@ -23,6 +23,14 @@ export interface StateChangeResult {
   changed: boolean;
 }
 
+/** A change that was recorded (never a no-op), as passed to `StateService.onChange` listeners. */
+export interface StateChangedEvent {
+  snapshot: CurrentStateSnapshot;
+  previousState: SpaceState;
+}
+
+export type StateChangeListener = (event: StateChangedEvent) => void;
+
 /**
  * Fast-path pointer to the current state. Not the source of truth on its
  * own — see domain/history for that — but a point read here is O(1) and

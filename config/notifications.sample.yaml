@@ -1,0 +1,15 @@
+# Sample notifications config for local development and tests. Not used in
+# production, where notifications.yaml is a blob next to api-keys.yaml (and,
+# like it, holds secrets). Every channel here is disabled: they carry
+# placeholder credentials. See README "Notifications".
+
+# For {time} and {date} in messages.
+timeZone: "Europe/Amsterdam"
+
+# Optional. Placeholders: {space} {state} {previousState} {changedBy} {method} {time} {date}.
+# A channel's own `messages` override these for that channel.
+messages:
+  open: "{space} is open."
+  closed: "{space} is closed."
+
+channels: []

@@ -12,9 +12,10 @@ match [pixelbar.nl/pixel](https://pixelbar.nl/pixel).
 
 | Path | Role |
 | --- | --- |
-| `docs/openapi.yaml` | The spec. The only file you edit to change what the docs say. |
+| `docs/openapi.yaml` | The spec. The only file you edit to change what the API reference says. |
 | `docs/index.md`, `docs/all.md`, `docs/operations/` | Three pages, each one component. No spec content in them. |
-| `docs/.vitepress/config.mts` | Site shell: nav, sidebar (generated from the spec), fonts. |
+| `docs/maintainers/` | Hand-written pages for whoever runs the service (Maintainers in the nav). Not generated. |
+| `docs/.vitepress/config.mts` | Site shell: nav, sidebars (the API one generated from the spec, the Maintainers one by hand), fonts. |
 | `docs/.vitepress/theme/pixel.css` | A copy of the /pixel theme. Generated — see below. |
 | `docs/.vitepress/theme/openapi.css` | What Pixel does not cover: the library's own components. |
 | `scripts/build-docs.ts` | Spec → `.vitepress/openapi.json` + `public/openapi.yaml`, then VitePress. |
@@ -24,6 +25,19 @@ that `scripts/build-docs.ts` writes. `docs/public/openapi.yaml` is a verbatim
 copy, published next to the site for codegen.
 
 ### Changing what the docs say
+
+The site has two halves. The API reference is generated from the spec, as
+below. The Maintainers section (`docs/maintainers/`) is ordinary VitePress
+markdown that explains how the service behaves for the people running it; a
+change to that behaviour updates its page in the same PR, and a new page also
+needs an entry in `maintainersSidebar` in `config.mts`.
+
+Diagrams in those pages are ```` ```mermaid ```` fences, drawn in the browser by
+`docs/.vitepress/theme/Mermaid.vue` with the Pixel colours (and redrawn when
+the colour mode flips). If one fails to parse, the page shows its source
+instead and the browser console says why.
+
+For the API reference:
 
 Edit `docs/openapi.yaml`. Nothing else — the pages render whatever the spec
 contains, and the sidebar and the per-operation pages are generated from it, so
