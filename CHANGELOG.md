@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Legacy parity contract tests (`just test-contract`, `test/contract/`): the SpaceAPI document, `/spacestate.php` and the toggle replies are compared against golden fixtures recorded `GET`-only from the live PHP system (`test/fixtures/legacy/`, indexed by `recording.json`). `/spacestate.php` and the toggle bodies must be byte-identical; the SpaceAPI document must be JSON-identical, pinned so that key order and PHP's `\/` escaping are the only byte differences possible. CORS, `Cache-Control` and the `Content-Type` media type are asserted from the recording. Every intentional difference is listed in `test/contract/README.md` and asserted, so the list can't go stale. The tests use in-memory stores, so they need no Azurite and run in the CI `check` job.
+
 ### Changed
 
 - Sentry no longer gets a log line for every poll. A week of production logs was over 95% `incoming request`, `request completed`, `StateService.getCurrentState: served from pointer` and `legacy.hit`, all from the same few clients polling the state. At the default `LOG_LEVEL=info`, Sentry Logs (and stdout) now carry what happened: state changes with who made them, rejections, errors, config reload failures, the state pointer falling back to history (once, not on every read), and `legacy.caller`, logged the first time a replica sees a legacy caller (route, client IP, user agent), which keeps the list of devices still on the legacy endpoints readable. `LOG_LEVEL=debug` (Terraform: `log_level`) brings back the line per request, per 404, per state read and per legacy hit; `trace` also brings back `incoming request`. The level applies to pino and to direct `Sentry.logger` calls alike. The `legacy.hits`/`legacy.response_time` metrics still count every legacy request (README: "Observability").

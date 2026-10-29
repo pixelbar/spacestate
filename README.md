@@ -50,9 +50,15 @@ Or run the whole thing containerized: `docker compose up --build`.
 
 ```sh
 just test-unit         # pure domain/config logic, no I/O
+just test-contract     # outputs vs the recorded legacy fixtures, no I/O
 docker compose up -d azurite
 just test-integration  # exercises both the new API and the legacy adapter
 ```
+
+`just test-contract` is the evidence that the cutover is safe: it compares
+this service's SpaceAPI document, `/spacestate.php` body and toggle replies
+against golden fixtures recorded from the live PHP system, and
+`test/contract/README.md` lists every difference that is there on purpose.
 
 ## Deploying
 
