@@ -38,3 +38,5 @@ repository's
     through the API, and where they are kept.
   - [Mastodon](/maintainers/notifications/mastodon) — posting statuses to an
     account.
+  - [Twitter / X](/maintainers/notifications/twitter) — posting to an X
+    account.
