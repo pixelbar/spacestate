@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
+import { isLevelEnabled, isNotableRequest, logLevel } from "./policy.js";
 
 /**
  * Must run before anything else is imported (see index.ts) — Sentry's
@@ -18,10 +19,30 @@ export function initSentry(): boolean {
   const dsn = process.env.SENTRY_DSN?.trim();
   if (!dsn) return false;
 
+  const minLogLevel = logLevel();
+  const notableRate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 1.0);
+  const routineRate = Number(process.env.SENTRY_ROUTINE_TRACES_SAMPLE_RATE ?? 0.01);
+
   Sentry.init({
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? "development",
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
+    // Every state change and history read is traced; polls, 404s and
+    // background work (config reloads) are sampled, which is enough for
+    // latency and throughput. A poll's rate is fixed rather than inherited
+    // from an incoming trace, so a caller that traces everything can't
+    // multiply it back up.
+    tracesSampler: ({ attributes, normalizedRequest }) => {
+      const path = attributes?.["url.path"];
+      const method = attributes?.["http.request.method"] ?? normalizedRequest?.method;
+      const notable =
+        attributes?.["sentry.op"] === "http.server" &&
+        typeof path === "string" &&
+        isNotableRequest(typeof method === "string" ? method : undefined, path);
+      return notable ? notableRate : routineRate;
+    },
+    // pino already drops lines below LOG_LEVEL; this applies the same floor
+    // to direct Sentry.logger.* calls.
+    beforeSendLog: (log) => (isLevelEnabled(log.level, minLogLevel) ? log : null),
     integrations: [
       Sentry.fastifyIntegration(),
       // Forwards Fastify's pino logs (request.log / app.log) to Sentry Logs,

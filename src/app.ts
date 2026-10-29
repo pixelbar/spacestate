@@ -13,6 +13,8 @@ import { createConfigSource } from "./config/sources/index.js";
 import { HistoryService } from "./domain/history/service.js";
 import { StateService } from "./domain/state/service.js";
 import { legacyPlugin } from "./legacy/plugin.js";
+import { RoutineRequestLogController } from "./observability/logController.js";
+import { logLevel } from "./observability/policy.js";
 import { healthPlugin } from "./plugins/health.js";
 import { registerErrorHandler } from "./plugins/errorHandler.js";
 import { TableCurrentStateStore } from "./storage/currentStateTable.js";
@@ -47,7 +49,10 @@ export async function buildApp(): Promise<BuiltApp> {
   const stateService = new StateService(currentStateStore, historyStore);
   const historyService = new HistoryService(historyStore);
 
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: { level: logLevel() },
+    logController: new RoutineRequestLogController(),
+  });
 
   registerErrorHandler(app);
   await app.register(healthPlugin);
