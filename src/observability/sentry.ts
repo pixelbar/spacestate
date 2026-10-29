@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
+import { isLevelEnabled, isNotableRequest, logLevel } from "./policy.js";
 import {
   scrubSentryBreadcrumb,
   scrubSentryEvent,
@@ -15,15 +16,39 @@ import {
  * No-ops cleanly when SENTRY_DSN is unset (local dev, tests, CI) — every
  * Sentry.* call elsewhere in the app is then a safe no-op, no extra guards
  * needed at the call sites.
+ *
+ * @returns whether Sentry was initialized, i.e. whether a DSN was present.
+ * index.ts logs this at startup so a deploy that reports nothing is visible
+ * in the logs instead of only in Sentry's absence.
  */
 export function initSentry(): boolean {
   const dsn = process.env.SENTRY_DSN?.trim();
   if (!dsn) return false;
 
+  const minLogLevel = logLevel();
+  const notableRate = Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 1.0);
+  const routineRate = Number(process.env.SENTRY_ROUTINE_TRACES_SAMPLE_RATE ?? 0.01);
+
   Sentry.init({
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? "development",
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
+    // Every state change and history read is traced; polls, 404s and
+    // background work (config reloads) are sampled, which is enough for
+    // latency and throughput. A poll's rate is fixed rather than inherited
+    // from an incoming trace, so a caller that traces everything can't
+    // multiply it back up.
+    tracesSampler: ({ attributes, normalizedRequest }) => {
+      const path = attributes?.["url.path"];
+      const method = attributes?.["http.request.method"] ?? normalizedRequest?.method;
+      const notable =
+        attributes?.["sentry.op"] === "http.server" &&
+        typeof path === "string" &&
+        isNotableRequest(typeof method === "string" ? method : undefined, path);
+      return notable ? notableRate : routineRate;
+    },
+    // pino already drops lines below LOG_LEVEL; this applies the same floor
+    // to direct Sentry.logger.* calls. What passes is scrubbed (issue #14).
+    beforeSendLog: (log) => (isLevelEnabled(log.level, minLogLevel) ? scrubSentryLog(log) : null),
     integrations: [
       Sentry.fastifyIntegration(),
       // Forwards Fastify's pino logs (request.log / app.log) to Sentry Logs,
@@ -40,12 +65,13 @@ export function initSentry(): boolean {
     // serializer and the 404 handler keep tokens out of the log lines we
     // write; these cover everything the SDK collects by itself — span
     // attributes (http.url, url.full, url.query), the request data and
-    // breadcrumbs it attaches to events, and the pino logs it forwards.
+    // breadcrumbs it attaches to events. Logs are scrubbed in beforeSendLog
+    // above.
     beforeSend: (event) => scrubSentryEvent(event),
     beforeSendTransaction: (event) => scrubSentryEvent(event),
     beforeSendSpan: (span) => ({ ...span, ...scrubSpanFields(span) }),
     beforeBreadcrumb: (breadcrumb) => scrubSentryBreadcrumb(breadcrumb),
-    beforeSendLog: (log) => scrubSentryLog(log),
   });
+
   return true;
 }

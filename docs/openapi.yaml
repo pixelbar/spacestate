@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Pixelbar spacestate API
-  version: 0.5.0
+  version: 0.5.1
   description: |
     SpaceAPI document and open/closed state for Pixelbar.
 
@@ -142,7 +142,12 @@ paths:
     get:
       tags: [History]
       summary: List state changes, newest first
-      description: Requires an API key with the `read` or `write` role.
+      description: |
+        Requires an API key with the `read` or `write` role. Each page reads at
+        most 12 monthly partitions. A sparse page may have no items and still
+        have a `continuationToken`; follow it until it is absent, keeping the
+        same date range and filters. Reversed date ranges and invalid
+        continuation cursors return 400.
       operationId: getHistory
       security:
         - bearerAuth: []
@@ -169,7 +174,7 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: A page of history.
+          description: A page of history, possibly empty with a continuation token.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HistoryPage" }

@@ -10,9 +10,20 @@ variable "resource_group_name" {
   default     = "pixelbar-spacestate"
 }
 
-variable "custom_domain" {
-  description = "Hostname to bind to the Container App, e.g. spacestate.pixelbar.nl. DNS lives outside Azure, so the matching records must be created manually — see outputs.tf."
-  type        = string
+variable "custom_domains" {
+  description = <<-EOT
+    Hostnames to bind to the Container App, each with a managed certificate.
+    Defaults to the production hostnames, so a plain apply keeps them bound.
+
+    DNS lives outside Azure, so adding a domain is two phases:
+      1. Create its records manually from the outputs (see outputs.tf): a
+         CNAME to `default_fqdn` and a TXT at asuid.<host> holding
+         `domain_verification_id`. Both outputs are the same for every domain.
+      2. Once DNS has propagated, add the hostname here and apply. Listing it
+         before then fails the certificate's validation.
+  EOT
+  type        = set(string)
+  default     = ["spacestate.pixelbar.nl", "spaceapi.pixelbar.nl"]
 }
 
 variable "container_image" {
@@ -20,11 +31,36 @@ variable "container_image" {
   type        = string
 }
 
+variable "sentry_enabled" {
+  description = <<-EOT
+    Whether this deployment reports to Sentry. True (the default) requires
+    `sentry_dsn` to be set, so an apply that forgets it fails instead of
+    quietly deploying with error reporting off.
+
+    Set it to false to deploy without Sentry on purpose. `sentry_dsn` is then
+    ignored (no secret, no `SENTRY_DSN` on the container), whether or not it
+    still sits in a tfvars file.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "sentry_dsn" {
-  description = "Sentry DSN. Empty string disables Sentry entirely — the app no-ops without a DSN."
+  description = <<-EOT
+    Sentry DSN, e.g. https://<key>@<org>.ingest.de.sentry.io/<project>. Required
+    unless `sentry_enabled` is false. Pass it per apply with
+    -var="sentry_dsn=..." or keep it in a gitignored infra/*.auto.tfvars —
+    there is no Key Vault in this stack, so Terraform is the only source.
+  EOT
   type        = string
   sensitive   = true
   default     = ""
+
+  # Cross-variable validation needs Terraform >= 1.9 (see versions.tf).
+  validation {
+    condition     = !var.sentry_enabled || trimspace(var.sentry_dsn) != ""
+    error_message = "sentry_dsn must be set, otherwise the deployed app reports nothing. Pass -var=\"sentry_dsn=...\" (or put it in a gitignored infra/*.auto.tfvars), or pass -var=\"sentry_enabled=false\" to deploy without error reporting on purpose."
+  }
 }
 
 variable "sentry_environment" {
@@ -33,14 +69,18 @@ variable "sentry_environment" {
   default     = "production"
 }
 
-variable "bind_custom_domain" {
+variable "log_level" {
   description = <<-EOT
-    Two-phase rollout switch for the custom domain, required because DNS is external:
-      1. Apply with this set to false. Read the `domain_verification_id` and
-         `default_fqdn` outputs and create the TXT/CNAME records manually.
-      2. Once DNS has propagated, set this to true and apply again to create
-         the managed certificate and bind the domain.
+    Minimum level logged to stdout and Sentry Logs. `info` (the default) logs
+    state changes, rejections, errors and each new legacy caller, but not the
+    polls. `debug` adds a line per request, per 404 and per state read, for
+    when you need to see the traffic itself; `trace` adds "incoming request".
   EOT
-  type        = bool
-  default     = false
+  type        = string
+  default     = "info"
+
+  validation {
+    condition     = contains(["trace", "debug", "info", "warn", "error", "fatal"], var.log_level)
+    error_message = "log_level must be one of trace, debug, info, warn, error, fatal."
+  }
 }

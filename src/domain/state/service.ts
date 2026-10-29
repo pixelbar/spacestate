@@ -11,25 +11,23 @@ import type {
 const DEFAULT_STATE: SpaceState = "closed";
 
 export class StateService {
+  /** The fallback the last read used, so each is reported once rather than on every poll. */
+  private fallback: "history" | "default" | undefined;
+
   constructor(
     private readonly currentStateStore: CurrentStateStore,
     private readonly historyStore: HistoryStore,
   ) {}
 
-  async getCurrentState(): Promise<CurrentStateSnapshot> {
-    try {
-      return await this.resolveCurrentState();
-    } catch (err) {
-      Sentry.logger.error("StateService.getCurrentState failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-  }
+  // Every poll reads the state, so a normal read logs at debug and a
+  // fallback is reported when it starts. Failures propagate to the route,
+  // where the error handler logs and captures them, and state changes are
+  // logged by the route that made them, with who made them.
 
-  private async resolveCurrentState(): Promise<CurrentStateSnapshot> {
+  async getCurrentState(): Promise<CurrentStateSnapshot> {
     const snapshot = await this.currentStateStore.get();
     if (snapshot) {
+      this.fallback = undefined;
       Sentry.logger.debug("StateService.getCurrentState: served from pointer", { state: snapshot.state });
       return snapshot;
     }
@@ -39,7 +37,9 @@ export class StateService {
     // most recent history entry instead of assuming a default.
     const mostRecent = await this.historyStore.mostRecent();
     if (mostRecent) {
-      Sentry.logger.info("StateService.getCurrentState: pointer missing, rebuilt from history", {
+      const level = this.fallback === "history" ? "debug" : "warn";
+      this.fallback = "history";
+      Sentry.logger[level]("StateService.getCurrentState: pointer missing, rebuilt from history", {
         state: mostRecent.state,
       });
       return {
@@ -51,7 +51,9 @@ export class StateService {
       };
     }
 
-    Sentry.logger.info("StateService.getCurrentState: no state recorded, using default", {
+    const level = this.fallback === "default" ? "debug" : "info";
+    this.fallback = "default";
+    Sentry.logger[level]("StateService.getCurrentState: no state recorded, using default", {
       state: DEFAULT_STATE,
     });
     return {
@@ -64,25 +66,6 @@ export class StateService {
   }
 
   async changeState(input: StateChangeInput): Promise<StateChangeResult> {
-    try {
-      const result = await this.applyStateChange(input);
-      Sentry.logger.info(
-        result.changed ? "StateService.changeState: state changed" : "StateService.changeState: no-op, already in state",
-        { state: input.state, user: input.user, source: input.source, changed: result.changed },
-      );
-      return result;
-    } catch (err) {
-      Sentry.logger.error("StateService.changeState failed", {
-        state: input.state,
-        user: input.user,
-        source: input.source,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-  }
-
-  private async applyStateChange(input: StateChangeInput): Promise<StateChangeResult> {
     const current = await this.getCurrentState();
     if (current.state === input.state) {
       return { snapshot: current, changed: false };

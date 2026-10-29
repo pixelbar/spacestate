@@ -53,8 +53,17 @@ resource "azurerm_container_app" "spacestate" {
         value = var.sentry_environment
       }
 
+      env {
+        name  = "LOG_LEVEL"
+        value = var.log_level
+      }
+
+      # var.sentry_enabled (default true) decides this, and its validation in
+      # variables.tf guarantees a DSN when it is on — so a forgotten
+      # -var="sentry_dsn=..." fails the apply instead of deploying an app that
+      # silently reports nothing.
       dynamic "env" {
-        for_each = var.sentry_dsn != "" ? [1] : []
+        for_each = var.sentry_enabled ? [1] : []
         content {
           name        = "SENTRY_DSN"
           secret_name = "sentry-dsn"
@@ -89,7 +98,7 @@ resource "azurerm_container_app" "spacestate" {
   }
 
   dynamic "secret" {
-    for_each = var.sentry_dsn != "" ? [1] : []
+    for_each = var.sentry_enabled ? [1] : []
     content {
       name  = "sentry-dsn"
       value = var.sentry_dsn

@@ -50,23 +50,43 @@ Or run the whole thing containerized: `docker compose up --build`.
 
 ```sh
 just test-unit         # pure domain/config logic, no I/O
+just test-contract     # outputs vs the recorded legacy fixtures, no I/O
 docker compose up -d azurite
 just test-integration  # exercises both the new API and the legacy adapter
 ```
 
+`just test-contract` is the evidence that the cutover is safe: it compares
+this service's SpaceAPI document, `/spacestate.php` body and toggle replies
+against golden fixtures recorded from the live PHP system, and
+`test/contract/README.md` lists every difference that is there on purpose.
+
 ## Deploying
 
-Infra lives in `infra/` (Terraform, `azurerm` provider). The domain is on
-external DNS, so the custom domain rollout is two phases:
+Infra lives in `infra/` (Terraform, `azurerm` provider). The app serves
+`spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of
+`custom_domains`.
 
 ```sh
 cd infra
 terraform init -backend-config=backend.azurerm.hcl
-terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
-# read the `domain_verification_id` and `default_fqdn` outputs, create the
-# TXT + CNAME records at your DNS provider, wait for them to propagate, then:
-terraform apply -var="custom_domain=spacestate.pixelbar.nl" -var="container_image=ghcr.io/pixelbar/spacestate:<tag>" -var="bind_custom_domain=true"
+# Once, so every apply from this clone keeps Sentry wired (see "Observability"):
+echo 'sentry_dsn = "https://<key>@<org>.ingest.de.sentry.io/<project>"' > sentry.auto.tfvars
+terraform apply -var="container_image=ghcr.io/pixelbar/spacestate:<tag>"
 ```
+
+Domains are on external DNS (TransIP), so adding one is two phases: create
+its records, then add it to `custom_domains`. To add a domain, create these at its DNS provider (the values are the same for
+every domain, from `terraform output`):
+
+| Type | Name | Value |
+| --- | --- | --- |
+| `CNAME` | `<host>` | `default_fqdn` |
+| `TXT` | `asuid.<host>` | `domain_verification_id` |
+
+Wait for them to propagate, add the host to `custom_domains`, and apply: that
+issues its managed certificate and binds it. A bare apex can't take a CNAME;
+point an `A` record at `environment_static_ip` instead, but the certificate is
+validated by CNAME, so an apex has not been tried.
 
 State is remote: storage account `pixelbartfstate`, container `spacestate`
 (see `infra/backend.azurerm.hcl`). Initialise with
@@ -126,16 +146,57 @@ no redeploy needed.
 
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
 error tracking, tracing, and logs — see `src/observability/sentry.ts`. The
-app runs fine with it unset; Sentry calls become no-ops.
+app runs fine with it unset; Sentry calls become no-ops. Startup says which
+it is: the `spacestate started` log carries `sentryEnabled: true|false`, and
+a run without a DSN also logs a `Sentry is disabled` warning (visible in
+Container Apps logs / Log Analytics — it cannot reach Sentry itself).
 
-In production the DSN comes from Terraform: pass `-var="sentry_dsn=..."` (or
-set it in a gitignored `*.auto.tfvars`) on `apply`. Without it the Container
-App has no `SENTRY_DSN` and **nothing is reported**.
+In production the DSN comes from Terraform, and **an apply without it fails**
+rather than quietly deploying with reporting off:
+
+```sh
+# infra/sentry.auto.tfvars (gitignored) — picked up by every apply:
+sentry_dsn = "https://<key>@<org>.ingest.de.sentry.io/<project>"
+```
+
+Equivalently, pass `-var="sentry_dsn=..."` per apply. If `sentry_dsn` is empty,
+`terraform plan`/`apply` stops with a validation error naming the variable. To
+deploy without error reporting on purpose, say so explicitly with
+`-var="sentry_enabled=false"`; the DSN is then ignored (no `sentry-dsn` secret,
+no `SENTRY_DSN` on the container) and the `sentry_enabled` output reads `false`.
+
+There is no Key Vault in this stack, and `just pull`/`push`/`edit` only move the
+three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
+Terraform is the one place the DSN lives. Rotating it is an `apply`.
 
 What is reported: 5xx errors (with route/method), config reload and
-state-service failures, startup crashes, and every `request.log`/`app.log`
-line (as Sentry Logs, via `pinoIntegration`), including state changes and
-rejected writes.
+state-pointer failures, and startup crashes, as Issues; and every
+`request.log`/`app.log` line at or above `LOG_LEVEL`, as Sentry Logs (via
+`pinoIntegration`). What counts as noise is decided in one place,
+`src/observability/policy.ts`.
+
+Most traffic is polling (`/`, `/spacestate.php`, `/api/v1/state`, ...) and
+scanners, so there are two levels of detail, picked with `LOG_LEVEL` (the
+Terraform variable `log_level`):
+
+| `LOG_LEVEL` | Logged (stdout and Sentry Logs) |
+| --- | --- |
+| `info` (default) | State changes and who made them, rejected writes, 4xx errors raised by Fastify, 5xx errors, config reload failures, the state pointer falling back to history, startup/shutdown, and `legacy.caller`: each legacy caller (route, client IP, user agent) the first time a replica sees it |
+| `debug` | Adds a line per request (`request completed`), per 404, per state read, and per legacy hit (`legacy.hit`, with all of the caller's headers) |
+| `trace` | Adds `incoming request` |
+
+Polls are counted rather than logged: the `legacy.hits` and
+`legacy.response_time` metrics count every legacy request, at any level.
+Tracing follows the same split. Every state change and history read is
+traced (`SENTRY_TRACES_SAMPLE_RATE`, default `1.0`). Everything else is
+sampled at `SENTRY_ROUTINE_TRACES_SAMPLE_RATE` (default `0.01`): polls, 404s,
+and background config reloads. That rate is enough for latency and
+throughput.
+
+To look at the traffic itself for a while, apply with
+`-var="log_level=debug"`, then apply without it to go back. A quicker
+toggle is `az containerapp update -n spacestate -g pixelbar-spacestate
+--set-env-vars LOG_LEVEL=debug`, but the next `terraform apply` resets it.
 
 Credentials never go with it. The legacy endpoints take their device token in
 the query string, so every URL is redacted on the way out by

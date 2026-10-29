@@ -22,6 +22,12 @@ export interface HistoryPage {
   continuationToken?: string;
 }
 
+export class InvalidHistoryQueryError extends Error {
+  constructor(public readonly field: "from" | "to" | "continuationToken", message: string) {
+    super(message);
+  }
+}
+
 /**
  * Append-only log of state changes. `mostRecent` exists specifically as a
  * reconciliation path for CurrentStateStore (see domain/state/service.ts) —

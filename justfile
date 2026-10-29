@@ -21,11 +21,15 @@ build:
 test-unit:
     npm run test:unit
 
+# Legacy parity: outputs vs the recorded legacy fixtures (see test/contract/README.md).
+test-contract:
+    npm run test:contract
+
 # Needs Azurite on :10002 (`just azurite`).
 test-integration:
     npm run test:integration
 
-test: test-unit test-integration
+test: test-unit test-contract test-integration
 
 # Everything CI runs for the main check job.
 check: typecheck build test

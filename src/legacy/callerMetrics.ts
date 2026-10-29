@@ -68,22 +68,30 @@ function callerAttributes(request: FastifyRequest): Record<string, string | numb
   >;
 }
 
+/** Bounds the first-seen set: scanners rotate IPs, and a replica can run for days. */
+const MAX_TRACKED_CALLERS = 1000;
+
 /**
- * Records one Sentry metric pair plus one structured log per legacy endpoint
- * hit, whatever the outcome (success, rejected, 5xx), with as much caller
- * detail as the request exposes: socket + forwarded IPs, user agent, and every
- * header. Credentials (token query param, auth/cookie headers) are redacted.
+ * Records one Sentry metric pair per legacy endpoint hit, whatever the outcome
+ * (success, rejected, 5xx), and logs the caller with as much detail as the
+ * request exposes: socket + forwarded IPs, user agent, and every header.
+ * Credentials (token query param, auth/cookie headers) are redacted.
  *
  * - `legacy.hits` counter and `legacy.response_time` distribution are sliced
- *   only by low-cardinality attributes (route, method, status).
- * - The `legacy.hit` log carries all caller detail (IPs, user agent, all
- *   headers, query).
+ *   only by low-cardinality attributes (route, method, status). They are what
+ *   counts the polling.
+ * - `legacy.caller` (info) is logged the first time this replica sees a
+ *   caller — route, client IP and user agent — so the list of who still needs
+ *   migrating stays short enough to read.
+ * - `legacy.hit` (debug) is logged for every hit, for `LOG_LEVEL=debug`.
  *
  * Called directly (not via register()) in legacyPlugin before the routes are
  * registered: a hook added in a separate plugin would be encapsulated and
  * never reach the sibling route plugins.
  */
 export function addCallerMetrics(fastify: FastifyInstance): void {
+  const seenCallers = new Set<string>();
+
   fastify.addHook("onResponse", async (request, reply) => {
     const route = request.routeOptions?.url ?? request.url;
     const caller = callerAttributes(request);
@@ -99,6 +107,13 @@ export function addCallerMetrics(fastify: FastifyInstance): void {
       unit: "millisecond",
       attributes: dimensions,
     });
-    Sentry.logger.info("legacy.hit", { ...caller, route, method: request.method, status });
+    const attributes = { ...caller, route, method: request.method, status };
+    const callerKey = JSON.stringify([route, caller.client_ip, caller.user_agent]);
+    if (!seenCallers.has(callerKey)) {
+      if (seenCallers.size >= MAX_TRACKED_CALLERS) seenCallers.clear();
+      seenCallers.add(callerKey);
+      Sentry.logger.info("legacy.caller", attributes);
+    }
+    Sentry.logger.debug("legacy.hit", attributes);
   });
 }

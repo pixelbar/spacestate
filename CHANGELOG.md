@@ -9,11 +9,38 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Legacy parity contract tests (`just test-contract`, `test/contract/`): the SpaceAPI document, `/spacestate.php` and the toggle replies are compared against golden fixtures recorded `GET`-only from the live PHP system (`test/fixtures/legacy/`, indexed by `recording.json`). `/spacestate.php` and the toggle bodies must be byte-identical; the SpaceAPI document must be JSON-identical, pinned so that key order and PHP's `\/` escaping are the only byte differences possible. CORS, `Cache-Control` and the `Content-Type` media type are asserted from the recording. Every intentional difference is listed in `test/contract/README.md` and asserted, so the list can't go stale. The tests use in-memory stores, so they need no Azurite and run in the CI `check` job.
+
+### Changed
+
+- Sentry no longer gets a log line for every poll. A week of production logs was over 95% `incoming request`, `request completed`, `StateService.getCurrentState: served from pointer` and `legacy.hit`, all from the same few clients polling the state. At the default `LOG_LEVEL=info`, Sentry Logs (and stdout) now carry what happened: state changes with who made them, rejections, errors, config reload failures, the state pointer falling back to history (once, not on every read), and `legacy.caller`, logged the first time a replica sees a legacy caller (route, client IP, user agent), which keeps the list of devices still on the legacy endpoints readable. `LOG_LEVEL=debug` (Terraform: `log_level`) brings back the line per request, per 404, per state read and per legacy hit; `trace` also brings back `incoming request`. The level applies to pino and to direct `Sentry.logger` calls alike. The `legacy.hits`/`legacy.response_time` metrics still count every legacy request (README: "Observability").
+- Traces follow the same split. Every state change (`/togglestate.php`, `/togglebaker.php`, `POST /api/v1/state`) and history read is traced (`SENTRY_TRACES_SAMPLE_RATE`, now default `1.0`). Polls, 404s and background config reloads are sampled at `SENTRY_ROUTINE_TRACES_SAMPLE_RATE` (default `0.01`), instead of everything at 10%. A poll's sampling no longer follows an incoming trace header.
+- Each event is logged once. A legacy toggle used to write `request.log`, `Sentry.logger` and `StateService` lines for the same outcome; now it writes one `legacy.togglestate …` line (the message names are unchanged), and `legacy.auth failed` is folded into `legacy.togglestate rejected: unknown token or IP`, which now carries `client_ip`. `StateService.changeState: …` and `StateService.* failed` are gone: the route logs the change, and the error handler logs and captures the failure. 4xx errors raised by Fastify (bad JSON, unsupported content type) log as `request rejected` at info instead of `request failed` at error, and `request failed` now carries the route and method.
+
+### Fixed
+
+- A `terraform apply` that adds or removes more than one domain no longer races on the Container App. Each hostname write rewrites the app's whole domain list, and the parallel writes (the provider's deletes and the `az` binds take no lock) could drop a domain or fail with `ContainerAppOperationInProgress`. Every hostname write now goes through `infra/hostname.sh`, which holds an exclusive `flock` (taken through `perl`, since macOS has no `flock(1)`) that the kernel releases when the process dies, so a killed apply leaves no stale lock. A failed hostname lookup fails the script instead of reading as "not attached". Hostnames are attached by that script instead of `azurerm_container_app_custom_domain`; a `removed` block stops managing the old resources without touching the live hostnames.
+
 ### Security
 
 - URL redaction also covers percent-encoded credential names, absolute and encoded legacy paths, Sentry query pairs, and error logs. Credentials nested in non-secret parameter values are detected without quadratic matching on long strings. Nested attributes are redacted at the depth limit. Sentry initialization preserves the startup enabled flag and blank-DSN handling.
-
 - Credentials in a request URL no longer reach the logs. The legacy device token is passed as a `token` query parameter, and Fastify's default request log wrote the URL verbatim while its default 404 echoed it back ("Route POST:/togglestate.php?…&token=… not found"), so a token ended up in stdout and in Sentry Logs. The pino `req` serializer now redacts URLs — the whole query string on the legacy routes, credential-carrying parameters (`token`, `access_token`, `api_key`, `secret`, `password`, …) everywhere else — unknown paths answer a generic `404 {"error":"not_found"}` that says nothing about the request, and the error handler redacts the URL it tags Sentry events with. Sentry's own collection is scrubbed too, via `beforeSend`, `beforeSendTransaction`, `beforeSendSpan`, `beforeBreadcrumb` and `beforeSendLog`: request URLs and query strings, span names and `http.url`/`url.full`/`url.query` attributes, breadcrumbs, tags, extra and forwarded pino logs. All of it goes through one helper, `src/observability/redact.ts`. Exposed tokens still have to be rotated by hand (issue #14).
+
+## [0.5.1] - 2026-10-28
+
+### Fixed
+
+- History queries read at most 12 monthly partitions per page, including empty ones, and resume through a continuation token. Wide date ranges no longer allocate every month or trigger unbounded storage work; unsafe cursors and reversed ranges return 400.
+- `terraform apply` failed on a domain that was never bound before: Azure refuses to issue a managed certificate (`RequireCustomHostnameInEnvironment`) until the hostname is attached to an app, while the hostname binding depended on the certificate. The apply now attaches the hostname without a certificate, issues the managed certificate, then binds it with `az containerapp hostname bind` (`azurerm_container_app_custom_domain` cannot take a certificate created after it), and ignores later changes to the binding fields so the next plan does not revert it. This fix (#15) was applied to production but merged into a branch that had already landed, so it never reached `main` until now.
+
+### Changed
+
+- A `terraform apply` that forgets the Sentry DSN now fails instead of silently deploying with error reporting off: `sentry_dsn` is validated against the new `sentry_enabled` variable (default `true`), so an empty DSN stops the plan with a message naming the variable. Running without Sentry stays possible but has to be deliberate — `-var="sentry_enabled=false"`, which drops the `sentry-dsn` secret and the `SENTRY_DSN` env var. A `sentry_enabled` output says which way the stack stands, and `*.tfvars` is now gitignored so `infra/sentry.auto.tfvars` can hold the DSN for every apply (README: "Observability").
+- The Container App can serve more than one custom domain. `custom_domain` (a string) and the `bind_custom_domain` switch are replaced by `custom_domains`, a set of hostnames that each get a managed certificate and binding; a domain goes in once its CNAME and `asuid` TXT records have propagated (README: "Deploying"). Taking a domain out deletes its hostname from the app before its certificate, which Azure would otherwise refuse to delete while still bound (`CertificateInUse`).
+- The deployment is now production on `spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of `custom_domains`. The next apply binds them and removes the `spacestate-dev.pixelbar.nl` hostname and certificate, so point both at the Container App first.
+- The app says at startup whether it reports to Sentry: `initSentry()` returns that, the `spacestate started` log carries `sentryEnabled`, and a start without a DSN also logs a `Sentry is disabled` warning. A blank `SENTRY_DSN` counts as unset. The DSN itself is never logged.
 
 ## [0.5.0] - 2026-10-20
 
@@ -69,7 +96,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Sentry continuous profiling via `@sentry/profiling-node`, configured in `src/observability/sentry.ts` and controlled by `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILE_SESSION_SAMPLE_RATE`. A no-op when `SENTRY_DSN` is unset.
 
 
-[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pixelbar/spacestate/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/pixelbar/spacestate/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pixelbar/spacestate/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/pixelbar/spacestate/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pixelbar/spacestate/compare/v0.3.0...v0.4.0
