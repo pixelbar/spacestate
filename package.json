@@ -35,6 +35,7 @@
     "@types/node": "^26.6.5",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "mermaid": "^12.2.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitepress": "^1.6.4",

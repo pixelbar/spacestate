@@ -31,6 +31,10 @@ just docs-preview   # hot-reloading preview on http://localhost:8000/spacestate/
 just docs-build     # build only, into docs/.vitepress/dist/
 ```
 
+The same site has a [Maintainers](https://pixelbar.nl/spacestate/maintainers/)
+section, hand-written under `docs/maintainers/`, on how the service behaves for
+the people running it (notifications, for now).
+
 See [`AGENTS.md`](AGENTS.md) for refreshing the theme from `/pixel`, previewing
 over Tailscale, and the two spec rules the build enforces.
 
@@ -143,7 +147,10 @@ no redeploy needed.
 ## Notifications
 
 Every recorded state change — from `/api/v1` or the legacy endpoints, never a
-no-op request — is announced to subscribers. The pieces, in `src/notifications/`:
+no-op request — is announced to subscribers. The
+[Maintainers pages](https://pixelbar.nl/spacestate/maintainers/notifications/)
+cover this in more depth: delivery rules, the log messages, adding a channel
+type. The pieces, in `src/notifications/`:
 
 - **`NotificationDispatcher`** fans a change out to every subscriber of every
   source. It is fire-and-forget (the request that changed the state never waits),
