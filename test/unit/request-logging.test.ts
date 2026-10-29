@@ -26,11 +26,51 @@ async function buildApp() {
   app.get("/boom", async () => {
     throw new Error("storage exploded");
   });
+  app.get("/url-error", async (request) => {
+    throw new Error(`failed for ${request.url}`, { cause: new Error(`upstream token=${TOKEN}`) });
+  });
   await app.ready();
   return { app, lines };
 }
 
 describe("request logging", () => {
+  it("redacts credentials nested in other parameter values from request and error logs", async () => {
+    const { app, lines } = await buildApp();
+    for (const path of ["/api/v1/history", "/url-error", "/unknown"]) {
+      for (const query of [`url=/x?token=${TOKEN}`, `a=1;%74oken=${TOKEN}`]) {
+        await app.inject(`${path}?${query}`);
+      }
+    }
+    await app.close();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join("\n")).not.toContain(TOKEN);
+    expect(lines.some((line) => line.includes("/api/v1/history"))).toBe(true);
+    expect(lines.some((line) => line.includes("request failed"))).toBe(true);
+  });
+
+  it("redacts encoded credential names from request and error logs", async () => {
+    const { app, lines } = await buildApp();
+    for (const path of ["/api/v1/history", "/url-error", "/unknown"]) {
+      await app.inject(`${path}?%74oken=${TOKEN}`);
+    }
+    await app.close();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join("\n")).not.toContain(TOKEN);
+    expect(lines.some((line) => line.includes("/api/v1/history"))).toBe(true);
+    const failure = lines.map((line) => JSON.parse(line)).find((line) => line.msg === "request failed");
+    expect(failure.err).toMatchObject({ type: "Error", message: expect.stringContaining("failed for /url-error") });
+    expect(failure.err.stack).toContain("request-logging.test.ts");
+  });
+
+  it.each(["<", ">", "'", '"'])("redacts a complete token containing %s", async (separator) => {
+    const { app, lines } = await buildApp();
+    for (const path of ["/unknown", "/url-error"]) {
+      await app.inject(`${path}?%74oken=prefix${separator}secret-tail`);
+    }
+    await app.close();
+    expect(lines.join("\n")).not.toContain("secret-tail");
+    expect(lines.join("\n")).not.toContain("prefix");
+  });
   it("never writes the legacy token to a log line, on any outcome", async () => {
     const { app, lines } = await buildApp();
     const query = `?user=Pixelbar&token=${TOKEN}&state=open`;

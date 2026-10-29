@@ -31,17 +31,35 @@ const SECRET_NAMES = [
 
 const SECRET_NAME_SET: ReadonlySet<string> = new Set(SECRET_NAMES);
 
-/**
- * Matches `name=value` for the secret names above, anywhere in a string: a
- * query string, a full URL, or prose that embeds one ("Route POST:/x?token=…
- * not found"). The leading `\b` keeps `continuationToken=` — a storage paging
- * cursor, not a credential — intact.
- */
-const SECRET_PARAM_PATTERN = new RegExp(String.raw`\b(${SECRET_NAMES.join("|")})=[^&#\s"']*`, "gi");
+function isSecretName(name: string): boolean {
+  try {
+    name = decodeURIComponent(name.replace(/\+/g, " "));
+  } catch {
+    // Malformed escapes cannot decode to an accepted credential name.
+  }
+  return SECRET_NAME_SET.has(name.toLowerCase());
+}
 
 /** Replaces the value of every secret-looking `name=value` pair with `[redacted]`. */
 export function redactSecrets(value: string): string {
-  return value.replace(SECRET_PARAM_PATTERN, (_match, name: string) => `${name}=${REDACTED}`);
+  // Always consume a complete name run, even without '=', to avoid retrying
+  // the same suffixes. Decode names once, like the HTTP query parser.
+  const names = /[a-z0-9_%+.-]+/gi;
+  const valueBoundary = /[&\s]/g;
+  const parts: string[] = [];
+  let copiedThrough = 0;
+  let match: RegExpExecArray | null;
+  while ((match = names.exec(value)) !== null) {
+    if (value[names.lastIndex] !== "=" || !isSecretName(match[0])) continue;
+
+    const valueStart = names.lastIndex + 1;
+    valueBoundary.lastIndex = valueStart;
+    const valueEnd = valueBoundary.exec(value)?.index ?? value.length;
+    parts.push(value.slice(copiedThrough, valueStart), REDACTED);
+    copiedThrough = valueEnd;
+    names.lastIndex = valueEnd;
+  }
+  return parts.length === 0 ? value : parts.join("") + value.slice(copiedThrough);
 }
 
 /**
@@ -59,6 +77,12 @@ const LEGACY_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 export function isLegacyPath(path: string): boolean {
+  path = path.replace(/^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|TRACE|CONNECT)[: ]+/i, "");
+  try {
+    path = decodeURIComponent(new URL(path, "http://redaction.invalid").pathname);
+  } catch {
+    // Keep a malformed path available for the exact matches below.
+  }
   return LEGACY_PATHS.has(path) || path.endsWith(".php");
 }
 
@@ -79,6 +103,13 @@ export function redactUrl(url: string): string {
 /** Sentry's `request.query_string`: a raw string, an object, or key/value pairs. */
 export function redactQueryString<T>(queryString: T): T {
   if (typeof queryString === "string") return redactSecrets(queryString) as T;
+  if (Array.isArray(queryString)) {
+    return queryString.map((pair) =>
+      Array.isArray(pair) && pair.length === 2 && typeof pair[0] === "string" && isSecretName(pair[0])
+        ? [pair[0], REDACTED]
+        : scrubValue(pair),
+    ) as T;
+  }
   return scrubValue(queryString) as T;
 }
 
@@ -111,13 +142,17 @@ function lastSegment(key: string): string {
 
 function scrubValue(value: unknown, depth = 0): unknown {
   if (typeof value === "string") return redactSecrets(value);
-  if (value === null || typeof value !== "object" || depth >= MAX_DEPTH) return value;
+  if (value === null || typeof value !== "object") return value;
+  if (depth >= MAX_DEPTH) return REDACTED;
+  if (value instanceof Error) {
+    return scrubValue({ ...value, type: value.name, message: value.message, stack: value.stack, cause: value.cause }, depth + 1);
+  }
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, depth + 1));
 
   const out: Record<string, unknown> = {};
   for (const [rawKey, inner] of Object.entries(value as Record<string, unknown>)) {
     const key = rawKey.toLowerCase();
-    if (SECRET_NAME_SET.has(key) || SECRET_NAME_SET.has(lastSegment(key))) {
+    if (isSecretName(key) || isSecretName(lastSegment(key))) {
       out[rawKey] = REDACTED;
     } else if (typeof inner === "string" && URL_KEYS.has(key)) {
       out[rawKey] = redactUrl(inner);
@@ -133,7 +168,8 @@ function scrubValue(value: unknown, depth = 0): unknown {
 /**
  * Deep-scrubs an attribute bag: secret-named keys lose their value entirely,
  * URL- and query-named keys are redacted as URLs, and every other string has
- * its `token=…` pairs redacted. Shape and types are preserved.
+ * its `token=…` pairs redacted. Overly deep object branches are replaced with
+ * a redaction marker rather than returned without inspection.
  */
 export function scrubAttributes<T extends object>(attributes: T): T {
   return scrubValue(attributes) as T;
