@@ -1,6 +1,6 @@
-import * as Sentry from "@sentry/node";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { resolveClientIp } from "../../auth/legacyToken.js";
 import { authenticateLegacyRequest } from "../auth.js";
 import type { LegacyPluginOptions } from "../plugin.js";
 import { LEGACY_ALREADY_TOGGLED, LEGACY_REDIRECT_URL, LEGACY_SUCCESS } from "../responses.js";
@@ -18,11 +18,12 @@ const toggleQuerySchema = z.object({
  * not behavior worth preserving. Both now share one handler, for GET and POST
  * (params always come from the query string, as in the PHP).
  *
- * Every outcome is logged to Sentry Logs under the `legacy.togglestate`
- * prefix with structured attributes (never the token). Unexpected failures
- * are logged and rethrown; the shared error handler captures the exception
- * (once — Sentry dedupes the same error object, so capturing in several
- * layers would drop the outer route context) and shapes the response.
+ * Every outcome is logged once, under the `legacy.togglestate` prefix with
+ * structured attributes (never the token); request.log reaches Sentry Logs
+ * through pinoIntegration. Unexpected failures are left to the shared error
+ * handler, which logs and captures them (once — Sentry dedupes the same error
+ * object, so capturing in several layers would drop the outer route context)
+ * and shapes the response.
  */
 export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async (
   fastify,
@@ -38,59 +39,42 @@ export const togglestateRoutes: FastifyPluginAsync<LegacyPluginOptions> = async 
   });
 
   const handler = async (request: FastifyRequest, reply: FastifyReply) => {
-    const route = request.routeOptions?.url ?? request.url;
-    const base = { route, method: request.method };
+    const base = { route: request.routeOptions?.url ?? request.url, method: request.method };
 
-    try {
-      const parsedQuery = toggleQuerySchema.safeParse(request.query);
-      if (!parsedQuery.success) {
-        request.log.warn("legacy state change rejected: invalid query");
-        Sentry.logger.warn("legacy.togglestate rejected: invalid params", {
-          ...base,
-          issues: parsedQuery.error.issues.map((issue) => issue.path.join(".")).join(","),
-        });
-        return reply.redirect(LEGACY_REDIRECT_URL);
-      }
-
-      const { token, user, state } = parsedQuery.data;
-      const auth = authenticateLegacyRequest(legacyStore.get(), request, token);
-      if (!auth) {
-        request.log.warn({ user, state }, "legacy state change rejected: unknown token or IP");
-        Sentry.logger.warn("legacy.togglestate rejected: unknown token or IP", {
-          ...base,
-          user,
-          state,
-          ip: request.ip,
-        });
-        return reply.redirect(LEGACY_REDIRECT_URL);
-      }
-
-      const result = await stateService.changeState({
-        state,
-        user,
-        method: auth.device.method,
-        source: "legacy",
-        deviceShortname: auth.device.shortname,
-      });
-
-      request.log.info(
-        { state, user, device: auth.device.shortname, changed: result.changed },
-        result.changed ? "space state changed (legacy)" : "space state change ignored: already in state (legacy)",
+    const parsedQuery = toggleQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      request.log.warn(
+        { ...base, issues: parsedQuery.error.issues.map((issue) => issue.path.join(".")).join(",") },
+        "legacy.togglestate rejected: invalid params",
       );
-      Sentry.logger.info(
-        result.changed ? "legacy.togglestate success: state changed" : "legacy.togglestate success: already in state",
-        { ...base, state, user, device: auth.device.shortname, changed: result.changed },
-      );
-
-      reply.type("text/plain");
-      return result.changed ? LEGACY_SUCCESS : LEGACY_ALREADY_TOGGLED;
-    } catch (err) {
-      Sentry.logger.error("legacy.togglestate failed", {
-        ...base,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
+      return reply.redirect(LEGACY_REDIRECT_URL);
     }
+
+    const { token, user, state } = parsedQuery.data;
+    const auth = authenticateLegacyRequest(legacyStore.get(), request, token);
+    if (!auth) {
+      request.log.warn(
+        { ...base, user, state, ip: request.ip, client_ip: resolveClientIp(request) },
+        "legacy.togglestate rejected: unknown token or IP",
+      );
+      return reply.redirect(LEGACY_REDIRECT_URL);
+    }
+
+    const result = await stateService.changeState({
+      state,
+      user,
+      method: auth.device.method,
+      source: "legacy",
+      deviceShortname: auth.device.shortname,
+    });
+
+    request.log.info(
+      { ...base, state, user, device: auth.device.shortname, changed: result.changed },
+      result.changed ? "legacy.togglestate success: state changed" : "legacy.togglestate success: already in state",
+    );
+
+    reply.type("text/plain");
+    return result.changed ? LEGACY_SUCCESS : LEGACY_ALREADY_TOGGLED;
   };
 
   for (const path of ["/togglestate.php", "/togglebaker.php"]) {

@@ -68,3 +68,19 @@ variable "sentry_environment" {
   type        = string
   default     = "production"
 }
+
+variable "log_level" {
+  description = <<-EOT
+    Minimum level logged to stdout and Sentry Logs. `info` (the default) logs
+    state changes, rejections, errors and each new legacy caller, but not the
+    polls. `debug` adds a line per request, per 404 and per state read, for
+    when you need to see the traffic itself; `trace` adds "incoming request".
+  EOT
+  type        = string
+  default     = "info"
+
+  validation {
+    condition     = contains(["trace", "debug", "info", "warn", "error", "fatal"], var.log_level)
+    error_message = "log_level must be one of trace, debug, info, warn, error, fatal."
+  }
+}

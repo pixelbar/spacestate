@@ -170,9 +170,33 @@ three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
 Terraform is the one place the DSN lives. Rotating it is an `apply`.
 
 What is reported: 5xx errors (with route/method), config reload and
-state-service failures, startup crashes, and every `request.log`/`app.log`
-line (as Sentry Logs, via `pinoIntegration`), including state changes and
-rejected writes.
+state-pointer failures, and startup crashes, as Issues; and every
+`request.log`/`app.log` line at or above `LOG_LEVEL`, as Sentry Logs (via
+`pinoIntegration`). What counts as noise is decided in one place,
+`src/observability/policy.ts`.
+
+Most traffic is polling (`/`, `/spacestate.php`, `/api/v1/state`, ...) and
+scanners, so there are two levels of detail, picked with `LOG_LEVEL` (the
+Terraform variable `log_level`):
+
+| `LOG_LEVEL` | Logged (stdout and Sentry Logs) |
+| --- | --- |
+| `info` (default) | State changes and who made them, rejected writes, 4xx errors raised by Fastify, 5xx errors, config reload failures, the state pointer falling back to history, startup/shutdown, and `legacy.caller`: each legacy caller (route, client IP, user agent) the first time a replica sees it |
+| `debug` | Adds a line per request (`request completed`), per 404, per state read, and per legacy hit (`legacy.hit`, with all of the caller's headers) |
+| `trace` | Adds `incoming request` |
+
+Polls are counted rather than logged: the `legacy.hits` and
+`legacy.response_time` metrics count every legacy request, at any level.
+Tracing follows the same split. Every state change and history read is
+traced (`SENTRY_TRACES_SAMPLE_RATE`, default `1.0`). Everything else is
+sampled at `SENTRY_ROUTINE_TRACES_SAMPLE_RATE` (default `0.01`): polls, 404s,
+and background config reloads. That rate is enough for latency and
+throughput.
+
+To look at the traffic itself for a while, apply with
+`-var="log_level=debug"`, then apply without it to go back. A quicker
+toggle is `az containerapp update -n spacestate -g pixelbar-spacestate
+--set-env-vars LOG_LEVEL=debug`, but the next `terraform apply` resets it.
 
 ## CI/CD
 
