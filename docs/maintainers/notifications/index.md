@@ -26,8 +26,8 @@ flowchart LR
   webhooks --> c["subscriber"]
 ```
 
-- A **subscriber** is one place a notification goes, such as one account or
-  one URL. It makes a single attempt each time it is asked, and
+- A **subscriber** is one place a notification goes: one account, one URL,
+  one set of IRC channels. It makes a single attempt each time it is asked, and
   reports a failure by throwing.
 - A **subscriber source** hands the dispatcher its current subscribers. It is
   asked again on every change, so its list can change while the app runs.
@@ -229,6 +229,7 @@ page in this section.
 | --- | --- | --- |
 | `mastodon` | A status on one Mastodon account | [Mastodon](/maintainers/notifications/mastodon) |
 | `twitter` | A post on one X account | [Twitter / X](/maintainers/notifications/twitter) |
+| `irc` | A message in one or more IRC channels | [IRC](/maintainers/notifications/irc) |
 
 Separately from channels, clients can register their own URLs through the
 API. See [Webhooks](/maintainers/notifications/webhooks).
