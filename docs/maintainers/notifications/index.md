@@ -224,7 +224,9 @@ page in this section.
 
 ## Channel types
 
-None yet: each configured channel type ships in its own release.
+| Type | Posts to | Details |
+| --- | --- | --- |
+| `mastodon` | A status on one Mastodon account | [Mastodon](/maintainers/notifications/mastodon) |
 
 Separately from channels, clients can register their own URLs through the
 API. See [Webhooks](/maintainers/notifications/webhooks).

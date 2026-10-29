@@ -244,6 +244,28 @@ Existing deployments: `terraform apply` creates the `webhooks` container, its
 role assignment and the env var; nothing needs uploading, as a missing
 `webhooks.yaml` just means no webhooks yet.
 
+### Mastodon
+
+Posts a status to one account. On that account, create an application under
+Preferences → Development with only the `write:statuses` scope, and copy its
+access token into `notifications.yaml`:
+
+```yaml
+channels:
+  - type: mastodon
+    id: pixelbar
+    instance: https://mastodon.example   # the account's home instance
+    accessToken: "…"
+    visibility: public                   # optional: unlisted | private | direct
+    language: nl                         # optional, ISO 639-1
+```
+
+Each post carries an `Idempotency-Key`, so a retry after a lost response does
+not post twice. A rejected token (401/403) or post (422) is not retried; the
+reason Mastodon gives is in the `Notification delivery failed` log. Turn off
+whatever else posts the state to the account (the VPS that does it today)
+when enabling this, or every change is announced twice.
+
 ## Observability
 
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry
