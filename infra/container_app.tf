@@ -53,6 +53,11 @@ resource "azurerm_container_app" "spacestate" {
         value = var.sentry_environment
       }
 
+      env {
+        name  = "LOG_LEVEL"
+        value = var.log_level
+      }
+
       # var.sentry_enabled (default true) decides this, and its validation in
       # variables.tf guarantees a DSN when it is on — so a forgotten
       # -var="sentry_dsn=..." fails the apply instead of deploying an app that
