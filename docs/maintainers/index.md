@@ -40,3 +40,4 @@ repository's
     account.
   - [Twitter / X](/maintainers/notifications/twitter) — posting to an X
     account.
+  - [IRC](/maintainers/notifications/irc) — saying it in IRC channels.

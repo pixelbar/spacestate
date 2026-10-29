@@ -20,6 +20,7 @@ const maintainersSidebar = [
       { text: "Webhooks", link: "/maintainers/notifications/webhooks" },
       { text: "Mastodon", link: "/maintainers/notifications/mastodon" },
       { text: "Twitter / X", link: "/maintainers/notifications/twitter" },
+      { text: "IRC", link: "/maintainers/notifications/irc" },
     ],
   },
 ];

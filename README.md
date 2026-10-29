@@ -291,6 +291,36 @@ Document-wide `messages` replace those defaults too, so if you set them, keep a
 response from posting twice. X's API quotas change often; check the developer
 portal that the account's tier allows a few posts a day.
 
+### IRC
+
+Says the message in one or more IRC channels:
+
+```yaml
+channels:
+  - type: irc
+    id: libera
+    server: irc.libera.chat
+    nick: pixelbar-state
+    channels: ["#pixelbar"]
+    # port: 6697                # default: 6697 with TLS, 6667 without
+    # tls: true
+    # password: "…"             # server password (PASS), for a bouncer
+    # sasl: { account: pixelbar-state, password: "…" }
+    # join: true                # false for channels without +n: no join/part noise
+    # notice: false             # true to send a NOTICE, as bots conventionally do
+```
+
+Each change is its own connection: connect, register, join, speak, quit. The
+app scales to zero, so a resident bot would keep dropping off; changes are rare
+enough that the join/part is the lesser noise (or set `join: false`). The
+delivery only counts once the server has answered a PING sent after the
+message, so "cannot send to channel" fails it instead of passing silently. A
+taken nick gets a digit appended. A refused SASL login, ban or channel mode is
+not retried; the reason is in the `Notification delivery failed` log. Some
+networks restrict connections from cloud providers' addresses unless they log
+in with SASL; if the connection is refused, register the nick with the
+network's services and configure `sasl`.
+
 ## Observability
 
 Set `SENTRY_DSN` (and optionally `SENTRY_ENVIRONMENT`) to enable Sentry

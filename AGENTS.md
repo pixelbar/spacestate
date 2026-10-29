@@ -35,7 +35,9 @@ needs an entry in `maintainersSidebar` in `config.mts`.
 Diagrams in those pages are ```` ```mermaid ```` fences, drawn in the browser by
 `docs/.vitepress/theme/Mermaid.vue` with the Pixel colours (and redrawn when
 the colour mode flips). If one fails to parse, the page shows its source
-instead and the browser console says why.
+instead and the browser console says why. Mermaid reads `#` as the start of an
+entity and drops what follows, so write a literal one (an IRC channel) as
+`#35;`.
 
 For the API reference:
 

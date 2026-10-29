@@ -36,3 +36,18 @@ channels:
     consumerSecret: "replace-with-the-api-key-secret"
     accessToken: "replace-with-the-access-token"
     accessTokenSecret: "replace-with-the-access-token-secret"
+
+  # Says it in IRC channels: connects, joins, speaks and quits each time.
+  - type: irc
+    id: libera
+    enabled: false
+    server: "irc.libera.chat"
+    # port: 6697                # default: 6697 with TLS, 6667 without
+    # tls: true
+    nick: "pixelbar-state"
+    # sasl:                     # log in to a services account; some networks require it from cloud addresses
+    #   account: "pixelbar-state"
+    #   password: "replace-with-the-services-password"
+    channels: ["#pixelbar"]
+    # join: true                # false for channels that accept outside messages (no +n)
+    # notice: false             # true to send a NOTICE instead of a PRIVMSG
