@@ -20,18 +20,20 @@ flowchart LR
   legacy["Legacy toggle endpoints"] --> state
   state -- "recorded change" --> dispatcher["NotificationDispatcher"]
   dispatcher --> configured["Configured channels<br/>(notifications.yaml)"]
-  dispatcher --> other["…any other source"]
+  dispatcher --> webhooks["Registered webhooks<br/>(POST /api/v1/webhooks)"]
   configured --> a["subscriber"]
   configured --> b["subscriber"]
-  other --> c["subscriber"]
+  webhooks --> c["subscriber"]
 ```
 
 - A **subscriber** is one place a notification goes, such as one account or
   one URL. It makes a single attempt each time it is asked, and
   reports a failure by throwing.
 - A **subscriber source** hands the dispatcher its current subscribers. It is
-  asked again on every change, so its list can change while the app runs. The
-  operator's channels in `notifications.yaml` are one source.
+  asked again on every change, so its list can change while the app runs.
+  There are two: the operator's channels in `notifications.yaml`, and the
+  [webhooks](/maintainers/notifications/webhooks) clients register through the
+  API.
 - The **dispatcher** decides when and how often to ask each subscriber.
 
 ### Delivery rules
@@ -222,5 +224,7 @@ page in this section.
 
 ## Channel types
 
-None yet. This release has the delivery machinery; each channel type ships in
-its own release.
+None yet: each configured channel type ships in its own release.
+
+Separately from channels, clients can register their own URLs through the
+API. See [Webhooks](/maintainers/notifications/webhooks).

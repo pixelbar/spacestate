@@ -34,3 +34,5 @@ repository's
 
 - [Notifications](/maintainers/notifications/) — announcing every state change
   to subscribers, and adding new kinds of subscriber.
+  - [Webhooks](/maintainers/notifications/webhooks) — URLs clients register
+    through the API, and where they are kept.

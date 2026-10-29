@@ -15,7 +15,10 @@ const maintainersSidebar = [
   },
   {
     text: "Notifications",
-    items: [{ text: "How it works", link: "/maintainers/notifications/" }],
+    items: [
+      { text: "How it works", link: "/maintainers/notifications/" },
+      { text: "Webhooks", link: "/maintainers/notifications/webhooks" },
+    ],
   },
 ];
 
