@@ -111,6 +111,8 @@ sample under `config/`:
   credentials to do it (`config/notifications.sample.yaml`). Optional: see
   "Notifications"
 
+plus `webhooks.yaml`, which the app writes itself (see "Webhooks").
+
 After the first `apply`, upload real ones:
 
 ```sh
@@ -164,7 +166,8 @@ type. The pieces, in `src/notifications/`:
   token, say).
 - **A subscriber source** is asked for its subscribers on every change, so the
   set can change at runtime. `ConfiguredChannels` is the operator's list in
-  `notifications.yaml`.
+  `notifications.yaml`; `WebhookSubscribers` is the URLs clients registered
+  through the API (see "Webhooks").
 
 `notifications.yaml` lists channels by `type`, each validated by that type's
 schema (so `just edit notifications` catches a misspelt field before it is
@@ -197,6 +200,49 @@ production it sits next to the other config blobs, and holds secrets like
 Adding a channel type is a module exporting a `ChannelType` (a schema that
 extends `channelBaseSchema`, and a `create` that returns a subscriber) plus a
 line in `src/notifications/channels/index.ts`.
+
+### Webhooks
+
+Other clients can register a URL to be notified when the space opens or
+closes, instead of polling `GET /api/v1/state`. With a `write` API key:
+
+```sh
+curl -X POST https://spacestate.pixelbar.nl/api/v1/webhooks \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"url": "https://hooks.example.org/pixelbar", "description": "Door sign"}'
+# -> {"id": "wh_…", "secret": "…", …}   the secret is shown once
+```
+
+`GET /api/v1/webhooks` lists your registrations (without secrets) and
+`DELETE /api/v1/webhooks/{id}` removes one. Each API key sees and manages only
+the webhooks it registered (another key's id answers 404), up to 20 per key.
+On every change the dispatcher POSTs a JSON body (`state`, `previousState`,
+`changedAt`, …) to each URL, signed with
+`X-Spacestate-Signature: sha256=HMAC(secret, "<timestamp>.<body>")`, with a
+5 s timeout and the usual retries; see the Webhooks section of the API
+reference for the contract receivers can rely on.
+
+Registrations live in `webhooks.yaml` (sample: `config/webhooks.sample.yaml`),
+read and written by the app itself, so they survive restarts and redeploys. In
+production it is a blob in the separate `webhooks` container, the only one the
+app's identity can write to (the `config` container stays read-only). Writes
+are conditional on the blob's ETag and retried on conflict, so two replicas
+registering at once don't lose entries; a registration reaches the other
+replicas within about a minute. `just edit webhooks` edits the live file, but
+prefer the API: a stale local copy pushed back would drop newer registrations
+(the diff shown before the push is the safeguard).
+
+Targets must be public `https://` URLs: credentials in the URL, `localhost`,
+private/link-local addresses and hostnames that resolve to them are refused,
+at registration and again at delivery, and redirects are not followed. For
+local development, `WEBHOOK_ALLOW_INSECURE=true` and
+`WEBHOOK_ALLOW_PRIVATE_TARGETS=true` lift those rules. `WEBHOOKS_CONFIG_SOURCE`
+(`file://` or `blob://`) overrides the location; locally it defaults to
+`config/prod/webhooks.yaml`, created on the first registration.
+
+Existing deployments: `terraform apply` creates the `webhooks` container, its
+role assignment and the env var; nothing needs uploading, as a missing
+`webhooks.yaml` just means no webhooks yet.
 
 ## Observability
 

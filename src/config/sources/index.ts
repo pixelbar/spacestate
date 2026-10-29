@@ -1,15 +1,15 @@
 import { FileConfigSource } from "./fileSource.js";
 import { BlobConfigSource } from "./blobSource.js";
-import type { ConfigSource } from "./types.js";
+import type { ConfigSource, WritableConfigSource } from "./types.js";
 
-export type { ConfigSource } from "./types.js";
+export type { ConfigSource, WritableConfigSource } from "./types.js";
 
 /**
  * CONFIG_SOURCE selects where the config document is loaded from:
  *   - file://./config/spaceapi.sample.json  (local dev, tests)
  *   - blob://<account>/<container>/<blob>  (production, via managed identity)
  */
-export function createConfigSource(configSourceUrl: string): ConfigSource {
+export function createConfigSource(configSourceUrl: string): WritableConfigSource {
   if (configSourceUrl.startsWith("file://")) {
     return new FileConfigSource(configSourceUrl.slice("file://".length));
   }

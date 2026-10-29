@@ -69,7 +69,7 @@ changelog-merge-driver:
 bump *args:
     npm run --silent bump -- {{args}}
 
-# Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy | notifications (omit for all).
+# Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy | notifications | webhooks (omit for all).
 # Needs `az login` and $SPACESTATE_STORAGE_ACCOUNT (or --account NAME in args).
 
 # Diff remote against local; ask before overwriting the local file(s).
