@@ -198,6 +198,15 @@ To look at the traffic itself for a while, apply with
 toggle is `az containerapp update -n spacestate -g pixelbar-spacestate
 --set-env-vars LOG_LEVEL=debug`, but the next `terraform apply` resets it.
 
+Credentials never go with it. The legacy endpoints take their device token in
+the query string, so every URL is redacted on the way out by
+`src/observability/redact.ts` — the whole query string on the legacy routes,
+`token`-style parameters elsewhere. It is wired into the pino request
+serializer, the error handler, the legacy caller metrics and Sentry's
+`beforeSend`/`beforeSendSpan`/`beforeSendLog` hooks, and unknown paths answer a
+generic `404 {"error":"not_found"}` instead of echoing the URL. Anything new
+that logs or reports a URL should use that helper.
+
 ## CI/CD
 
 `.github/workflows/ci.yml` typechecks, builds, runs unit + integration tests
