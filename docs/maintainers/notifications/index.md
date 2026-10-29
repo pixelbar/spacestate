@@ -111,8 +111,9 @@ it:
 
 1. the channel's own `messages`;
 2. the document's `messages`;
-3. the channel type's defaults, for types with a reason to differ (one that
-   refuses repeated posts needs a time in every message, say);
+3. the channel type's defaults, for types with a reason to differ (X refuses
+   repeated posts, so [its defaults](/maintainers/notifications/twitter#x-refuses-repeated-posts)
+   carry the time);
 4. `{space} is open.` / `{space} is closed.`
 
 Document-wide `messages` therefore also replace a channel type's defaults. Check
@@ -227,6 +228,7 @@ page in this section.
 | Type | Posts to | Details |
 | --- | --- | --- |
 | `mastodon` | A status on one Mastodon account | [Mastodon](/maintainers/notifications/mastodon) |
+| `twitter` | A post on one X account | [Twitter / X](/maintainers/notifications/twitter) |
 
 Separately from channels, clients can register their own URLs through the
 API. See [Webhooks](/maintainers/notifications/webhooks).
