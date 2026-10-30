@@ -75,6 +75,7 @@ bump *args:
 
 # Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy (omit for all).
 # Needs `az login` and $SPACESTATE_STORAGE_ACCOUNT (or --account NAME in args).
+# Add `--env dev` for the dev environment: config/dev/ and $SPACESTATE_DEV_STORAGE_ACCOUNT.
 
 # Diff remote against local; ask before overwriting the local file(s).
 pull *args:
@@ -91,3 +92,23 @@ edit name *args:
 # Generate an API key, e.g. `just api-key ha-bridge --role write --add`.
 api-key id *args:
     npm run --silent api-key -- {{id}} {{args}}
+
+# Dev's own state and .terraform-dev/, so it never shares an init with prod (README: "Dev environment").
+# Terraform on the dev environment, e.g. `just tf-dev plan`.
+tf-dev *args:
+    cd infra && TF_DATA_DIR=.terraform-dev TF_CLI_ARGS_init="-backend-config=backend.dev.azurerm.hcl" TF_VAR_environment=dev terraform {{args}}
+
+# Put a PR, branch or commit on dev via GitHub Actions, e.g. `just deploy-dev 33` (default: this branch).
+deploy-dev ref="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ref="{{ref}}"
+    ref="${ref:-$(git rev-parse --abbrev-ref HEAD)}"
+    # main's workflow, so the deploy steps are the reviewed ones; the ref only supplies the code.
+    gh workflow run deploy-dev.yml --ref main -f ref="${ref}"
+    echo "Deploying ${ref} to dev. Follow it with: gh run watch"
+
+# Take dev's app and environment down between stretches of feature work; Deploy dev brings it back.
+destroy-dev:
+    gh workflow run destroy-dev.yml --ref main
+    @echo "Destroying dev's app and environment. Follow it with: gh run watch"

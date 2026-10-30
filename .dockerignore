@@ -7,3 +7,4 @@ test/
 docker-compose.yml
 infra/
 config/prod/
+config/dev/
