@@ -11,7 +11,8 @@
 # fail with ContainerAppOperationInProgress. An exclusive flock serializes
 # them. The kernel releases it when this process exits, however it exits, so
 # an apply killed mid-write leaves no stale lock to break. macOS has no
-# flock(1), so perl takes the lock and re-runs this script holding it.
+# flock(1), so perl takes the lock and re-runs this script holding it. The
+# lock lives in Terraform's data directory (`just tf-dev` uses .terraform-dev).
 #
 # add and delete are no-ops when the hostname is already there or already gone.
 set -euo pipefail
@@ -24,7 +25,7 @@ if [ -z "${HOSTNAME_SH_LOCKED:-}" ]; then
     open(my $fh, ">>", shift) or die "hostname.sh: lock: $!\n";
     flock($fh, LOCK_EX) or die "hostname.sh: lock: $!\n";
     exec(@ARGV) or die "hostname.sh: exec: $!\n";
-  ' "$(dirname "$0")/.terraform/hostname.lock" "$0" "$@"
+  ' "${TF_DATA_DIR:-$(dirname "$0")/.terraform}/hostname.lock" "$0" "$@"
 fi
 
 action="$1" app="$2" rg="$3" host="$4"
