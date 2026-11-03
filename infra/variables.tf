@@ -1,3 +1,18 @@
+variable "environment" {
+  description = <<-EOT
+    Which deployment this state describes: `prod` (the default, so a plain
+    apply is prod as before) or `dev`. Use `just tf-dev`, which pairs it with
+    dev's state, rather than setting it by hand (see environment.tf).
+  EOT
+  type        = string
+  default     = "prod"
+
+  validation {
+    condition     = contains(["prod", "dev"], var.environment)
+    error_message = "environment must be prod or dev."
+  }
+}
+
 variable "location" {
   description = "Azure region for all resources."
   type        = string
@@ -5,7 +20,7 @@ variable "location" {
 }
 
 variable "resource_group_name" {
-  description = "Name of the resource group to create. Kept short: it also seeds the storage account name, which has a 24-character limit."
+  description = "Name of the resource group to create; dev appends -dev. Kept short: it also seeds the storage account name, which has a 24-character limit."
   type        = string
   default     = "pixelbar-spacestate"
 }
@@ -13,7 +28,8 @@ variable "resource_group_name" {
 variable "custom_domains" {
   description = <<-EOT
     Hostnames to bind to the Container App, each with a managed certificate.
-    Defaults to the production hostnames, so a plain apply keeps them bound.
+    Unset, prod binds the production hostnames, so a plain apply keeps them
+    bound, and dev binds none (it serves its *.azurecontainerapps.io name).
 
     DNS lives outside Azure, so adding a domain is two phases:
       1. Create its records manually from the outputs (see outputs.tf): a
@@ -23,7 +39,7 @@ variable "custom_domains" {
          before then fails the certificate's validation.
   EOT
   type        = set(string)
-  default     = ["spacestate.pixelbar.nl", "spaceapi.pixelbar.nl"]
+  default     = null
 }
 
 variable "container_image" {
@@ -64,9 +80,9 @@ variable "sentry_dsn" {
 }
 
 variable "sentry_environment" {
-  description = "Sentry environment tag."
+  description = "Sentry environment tag. Unset: `production` in prod, `dev` in dev."
   type        = string
-  default     = "production"
+  default     = null
 }
 
 variable "log_level" {

@@ -50,7 +50,7 @@ resource "azurerm_container_app" "spacestate" {
 
       env {
         name  = "SENTRY_ENVIRONMENT"
-        value = var.sentry_environment
+        value = local.sentry_environment
       }
 
       env {

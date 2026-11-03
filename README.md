@@ -64,7 +64,8 @@ against golden fixtures recorded from the live PHP system, and
 
 Infra lives in `infra/` (Terraform, `azurerm` provider). The app serves
 `spacestate.pixelbar.nl` and `spaceapi.pixelbar.nl`, the default of
-`custom_domains`.
+`custom_domains`. Everything in this section is prod; the same root also
+describes a separate dev environment (see "Dev environment").
 
 ```sh
 cd infra
@@ -238,6 +239,9 @@ approval, and a failed deploy does not hold the site back.
 The bot pushes to `main`, so if branch protection is on, allow
 `github-actions[bot]` to bypass it.
 
+To try a pull request on Azure before merging it, Actions → Deploy dev puts it
+on the separate dev environment (see "Dev environment").
+
 ### Changelog conflicts
 
 The changelog merge workflow works out of the box, with one caveat: pushes made
@@ -288,3 +292,164 @@ After the first release publishes the image, make the GHCR package public once
 (Packages → spacestate → Package settings → Change visibility). GitHub has no
 API for this; Azure pulls anonymously, and the release fails before deploying
 if the package is still private.
+
+## Dev environment
+
+A second deployment for trying a pull request on real Azure before it merges,
+such as the stacked notification PRs, without going near production. It is the
+same Terraform root with `environment = "dev"` (`infra/environment.tf`): its
+own resource group (`pixelbar-spacestate-dev`), storage account (so its own
+state history, config blobs and webhooks), Container App and Terraform state.
+Nothing is shared with prod, and the space's hardware only knows prod's
+hostnames. Dev serves its `*.azurecontainerapps.io` hostname, which the deploy
+links to, and scales to zero like prod.
+
+### Deploying a pull request
+
+Actions → Deploy dev → Run workflow, with a PR number, branch or SHA, or from a
+clone:
+
+```sh
+just deploy-dev 36    # or a branch or SHA; default: the current branch
+```
+
+`.github/workflows/deploy-dev.yml` resolves the ref to a commit in this
+repository (forks are refused: their code would run with dev's Azure
+identity), runs that commit's `just check`, publishes
+`ghcr.io/pixelbar/spacestate:<sha>` and `:dev`, applies that commit's `infra/`
+to dev, rolls the app to the image and waits for `/healthz`. Applying the PR's
+Terraform is the difference from a Release, and the point: a PR that adds a
+blob container, an env var or a role gets it on dev too.
+
+- **Each run replaces what dev was running.** Runs queue rather than overlap.
+  Say so before deploying over someone else's test.
+- **For a stack, deploy the PR you want to test up to.** A PR's head contains
+  every PR below it, so the top of the notifications stack (IRC) has all of
+  them, and the bottom (core) only the dispatcher.
+- **A commit from before dev existed is refused**, because its Terraform only
+  knows prod's names. Merge `main` into the branch first (for a stack, into the
+  bottom PR, then upwards).
+- **Dev's data is disposable**, and dev's notification channels must point at
+  test accounts (a Mastodon test account, an IRC channel of your own), never
+  the space's. A state change on dev is real to whoever follows the channel.
+
+### Configuring dev
+
+The config commands take `--env dev`, which uses `config/dev/` (gitignored) and
+`$SPACESTATE_DEV_STORAGE_ACCOUNT`, so a dev copy can never be pushed to prod:
+
+```sh
+just pull --env dev
+just edit api-keys --env dev
+just push --env dev
+```
+
+`just tf-dev <command>` is Terraform on dev: dev's backend
+(`infra/backend.dev.azurerm.hcl`), its own `infra/.terraform-dev/`, and
+`environment=dev`. Plain `terraform` in `infra/` is still prod. Pairing one
+environment's variables with the other's state stops at plan time instead of
+replacing everything (`terraform_data.environment`).
+
+### Destroying dev between features
+
+Between stretches of feature work, take dev down with Actions → Destroy dev
+(or `just destroy-dev`), and bring it back with the next Deploy dev:
+
+- **Removed:** the Container App, its Container Apps environment, the Log
+  Analytics workspace (dev deletes it outright rather than soft-deleting it, so
+  it can be recreated under the same name), and the app's role assignments.
+- **Kept:** the resource group and the storage account, so dev's config blobs,
+  state history and webhooks survive, and the next deploy needs no setup. It
+  comes back at a new `*.azurecontainerapps.io` hostname, which the deploy links
+  to.
+
+It shares Deploy dev's queue, so it never lands in the middle of a deploy, and
+it destroys with the Terraform of the commit dev was running (from the image
+tag), so a pull request's extra resources go too. Running it when dev is
+already down changes nothing.
+
+Idle dev was already cheap: it scales to zero, and storage costs cents. What
+this removes is the rest: replicas woken by scanners, and Log Analytics
+ingestion.
+
+The resource group stays because dev's CI identity is scoped to it. Deleting it
+deletes that identity's role assignments too, and only the one-time setup
+restores them.
+
+### One-time dev setup
+
+An admin does this once. First create dev from a laptop, because the CI
+identity is scoped to the resource group that this creates:
+
+```sh
+az storage container create --account-name pixelbartfstate --name spacestate-dev --auth-mode login
+just tf-dev init
+just tf-dev apply -var="container_image=ghcr.io/pixelbar/spacestate:latest" -var="sentry_enabled=false"
+```
+
+Then give it config. The app does not start without all three blobs. Don't
+use the samples: their keys are public.
+
+```sh
+echo "SPACESTATE_DEV_STORAGE_ACCOUNT=$(just tf-dev output -raw storage_account_name)" >> .env
+mkdir -p config/dev
+cp config/spaceapi.sample.json config/dev/spaceapi.json
+just api-key tester --role write > config/dev/api-keys.yaml
+echo 'legacyDevices: []' > config/dev/legacy.yaml
+just push --env dev
+```
+
+Next, create the identity the workflow logs in as. It is separate from prod's
+and can reach only dev's resource group and dev's state container. It may grant
+the app its storage roles (Storage Blob Data Reader and Contributor, Storage
+Table Data Contributor) and no others. If a PR needs another role on dev,
+extend the condition to include it.
+
+```sh
+SUB=$(az account show --query id -o tsv)
+RG_SCOPE="/subscriptions/$SUB/resourceGroups/pixelbar-spacestate-dev"
+
+APP_ID=$(az ad app create --display-name spacestate-github-dev --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "github-dev",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:pixelbar/spacestate:environment:dev",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+az role assignment create --assignee "$APP_ID" --role Contributor --scope "$RG_SCOPE"
+# Storage Blob Data Reader, Storage Blob Data Contributor, Storage Table Data Contributor
+ROLES="2a2b9908-6ea1-4ae2-8e65-a410df84e7d1, ba92f5b4-2d11-453d-a403-e96b0029c9fe, 0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3"
+CONDITION=$(cat <<EOF
+((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'}))
+  OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$ROLES}))
+AND
+((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'}))
+  OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$ROLES}))
+EOF
+)
+az role assignment create --assignee "$APP_ID" --role "Role Based Access Control Administrator" \
+  --scope "$RG_SCOPE" --condition-version 2.0 --condition "$CONDITION"
+az role assignment create --assignee "$APP_ID" --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUB/resourceGroups/pixel-bootstrap/providers/Microsoft.Storage/storageAccounts/pixelbartfstate/blobServices/default/containers/spacestate-dev"
+```
+
+Finally, create GitHub Environment `dev` with that client ID. The tenant and
+subscription come from the repository's variables.
+
+```sh
+gh api -X PUT repos/pixelbar/spacestate/environments/dev
+gh variable set AZURE_CLIENT_ID --env dev --body "$APP_ID"
+gh secret set SENTRY_DSN --env dev    # optional: dev's errors in Sentry, environment "dev"
+```
+
+Anyone with write access can then deploy to dev. Add required reviewers to
+the `dev` environment if that is too loose.
+
+To remove dev entirely, data and resource group included, an admin runs
+`just tf-dev state rm terraform_data.environment`, then
+`just tf-dev destroy -var="container_image=unused" -var="sentry_enabled=false"`.
+Deleting the resource group also deletes the CI identity's role assignments,
+so bringing dev back afterwards means the one-time setup again. For a pause,
+use Destroy dev.

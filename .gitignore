@@ -6,6 +6,7 @@ dist/
 !.env.example
 .DS_Store
 .terraform/
+.terraform-dev/
 *.tfstate
 *.tfstate.*
 *.tfplan
@@ -14,6 +15,7 @@ dist/
 *.tfvars
 *.tfvars.json
 config/prod/
+config/dev/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 # Generated from docs/openapi.yaml by scripts/build-docs.ts.
