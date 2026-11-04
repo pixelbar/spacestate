@@ -29,6 +29,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Fixed
 
+- The README's one-time setup made federated credentials that Azure refuses (`AADSTS700213`). This repo's OIDC tokens use immutable subjects (`repo:pixelbar@1690472/spacestate@1420639554:environment:…`), not `repo:pixelbar/spacestate:environment:…`, so the setup now reads the prefix from GitHub. Dev's setup also grants the operator Storage Blob and Table Data Contributor before `just push --env dev`, which account keys no longer stand in for.
 - A `terraform apply` that adds or removes more than one domain no longer races on the Container App. Each hostname write rewrites the app's whole domain list, and the parallel writes (the provider's deletes and the `az` binds take no lock) could drop a domain or fail with `ContainerAppOperationInProgress`. Every hostname write now goes through `infra/hostname.sh`, which holds an exclusive `flock` (taken through `perl`, since macOS has no `flock(1)`) that the kernel releases when the process dies, so a killed apply leaves no stale lock. A failed hostname lookup fails the script instead of reading as "not attached". Hostnames are attached by that script instead of `azurerm_container_app_custom_domain`; a `removed` block stops managing the old resources without touching the live hostnames.
 
 ### Security
