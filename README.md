@@ -460,16 +460,19 @@ that would bring in workflow changes is refused.
 ```sh
 SUB=$(az account show --query id -o tsv)
 TENANT=$(az account show --query tenantId -o tsv)
+# The repo uses immutable OIDC subjects (owner and repo IDs, not just names):
+# repo:pixelbar@1690472/spacestate@1420639554
+OIDC_PREFIX=$(gh api repos/pixelbar/spacestate/actions/oidc/customization/sub --jq .sub_claim_prefix)
 
 # Identity GitHub logs in as (no client secret; OIDC only)
 APP_ID=$(az ad app create --display-name spacestate-github-deploy --query appId -o tsv)
 az ad sp create --id "$APP_ID"
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-prod",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:pixelbar/spacestate:environment:prod",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
+az ad app federated-credential create --id "$APP_ID" --parameters "{
+  \"name\": \"github-prod\",
+  \"issuer\": \"https://token.actions.githubusercontent.com\",
+  \"subject\": \"${OIDC_PREFIX}:environment:prod\",
+  \"audiences\": [\"api://AzureADTokenExchange\"]
+}"
 
 # Allowed to update the app, scoped to its resource group only
 az role assignment create --assignee "$APP_ID" --role Contributor \
@@ -483,6 +486,11 @@ gh variable set AZURE_SUBSCRIPTION_ID --body "$SUB"
 
 Then in GitHub → Settings → Environments, create `prod` and add required
 reviewers.
+
+The subject must match the token exactly. A credential with the plain
+`repo:pixelbar/spacestate:…` form fails the login with `AADSTS700213: No
+matching federated identity record found`, and the error names the subject
+GitHub actually sent.
 
 After the first release publishes the image, make the GHCR package public once
 (Packages → spacestate → Package settings → Change visibility). GitHub has no
@@ -584,9 +592,19 @@ just tf-dev apply -var="container_image=ghcr.io/pixelbar/spacestate:latest" -var
 ```
 
 Then give it config. The app does not start without all three blobs. Don't
-use the samples: their keys are public.
+use the samples: their keys are public. The storage account takes Azure AD
+only, so whoever pushes needs a data role on it first (prod's operators have
+the same two):
 
 ```sh
+ME=$(az ad signed-in-user show --query id -o tsv)
+DEV_ST=$(az storage account show -n pixelbarspacestatedevst -g pixelbar-spacestate-dev --query id -o tsv)
+az role assignment create --assignee-object-id "$ME" --assignee-principal-type User \
+  --role "Storage Blob Data Contributor" --scope "$DEV_ST"
+az role assignment create --assignee-object-id "$ME" --assignee-principal-type User \
+  --role "Storage Table Data Contributor" --scope "$DEV_ST"
+# Role assignments take a minute or two to apply.
+
 echo "SPACESTATE_DEV_STORAGE_ACCOUNT=$(just tf-dev output -raw storage_account_name)" >> .env
 mkdir -p config/dev
 cp config/spaceapi.sample.json config/dev/spaceapi.json
@@ -604,15 +622,16 @@ extend the condition to include it.
 ```sh
 SUB=$(az account show --query id -o tsv)
 RG_SCOPE="/subscriptions/$SUB/resourceGroups/pixelbar-spacestate-dev"
+OIDC_PREFIX=$(gh api repos/pixelbar/spacestate/actions/oidc/customization/sub --jq .sub_claim_prefix)
 
 APP_ID=$(az ad app create --display-name spacestate-github-dev --query appId -o tsv)
 az ad sp create --id "$APP_ID"
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-dev",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:pixelbar/spacestate:environment:dev",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
+az ad app federated-credential create --id "$APP_ID" --parameters "{
+  \"name\": \"github-dev\",
+  \"issuer\": \"https://token.actions.githubusercontent.com\",
+  \"subject\": \"${OIDC_PREFIX}:environment:dev\",
+  \"audiences\": [\"api://AzureADTokenExchange\"]
+}"
 
 az role assignment create --assignee "$APP_ID" --role Contributor --scope "$RG_SCOPE"
 # Storage Blob Data Reader, Storage Blob Data Contributor, Storage Table Data Contributor
@@ -639,6 +658,10 @@ gh api -X PUT repos/pixelbar/spacestate/environments/dev
 gh variable set AZURE_CLIENT_ID --env dev --body "$APP_ID"
 gh secret set SENTRY_DSN --env dev    # optional: dev's errors in Sentry, environment "dev"
 ```
+
+Without the `--env dev` variable, Deploy dev falls back to the repository's
+`AZURE_CLIENT_ID`, which is prod's identity, and its login fails with
+`AADSTS700213` (prod's identity only trusts `environment:prod`).
 
 Anyone with write access can then deploy to dev. Add required reviewers to
 the `dev` environment if that is too loose.
