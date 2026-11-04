@@ -470,7 +470,7 @@ az ad sp create --id "$APP_ID"
 az ad app federated-credential create --id "$APP_ID" --parameters "{
   \"name\": \"github-prod\",
   \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"$OIDC_PREFIX:environment:prod\",
+  \"subject\": \"${OIDC_PREFIX}:environment:prod\",
   \"audiences\": [\"api://AzureADTokenExchange\"]
 }"
 
@@ -629,7 +629,7 @@ az ad sp create --id "$APP_ID"
 az ad app federated-credential create --id "$APP_ID" --parameters "{
   \"name\": \"github-dev\",
   \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"$OIDC_PREFIX:environment:dev\",
+  \"subject\": \"${OIDC_PREFIX}:environment:dev\",
   \"audiences\": [\"api://AzureADTokenExchange\"]
 }"
 
