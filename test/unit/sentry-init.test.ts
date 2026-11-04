@@ -11,14 +11,29 @@ vi.mock("@sentry/profiling-node", () => ({ nodeProfilingIntegration: () => ({ na
 
 import { initSentry } from "../../src/observability/sentry.js";
 
+/** Never use a real credential here — this is a made-up value. */
+const TOKEN = "s3cr3t-test-token";
+
+function noToken(value: unknown): void {
+  expect(JSON.stringify(value)).not.toContain(TOKEN);
+}
+
 describe("initSentry", () => {
-  const dsn = process.env.SENTRY_DSN;
+  const saved = { SENTRY_DSN: process.env.SENTRY_DSN, LOG_LEVEL: process.env.LOG_LEVEL };
 
   beforeEach(() => init.mockClear());
   afterEach(() => {
-    if (dsn === undefined) delete process.env.SENTRY_DSN;
-    else process.env.SENTRY_DSN = dsn;
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   });
+
+  function initOptions() {
+    process.env.SENTRY_DSN = "https://key@o0.ingest.de.sentry.io/1";
+    initSentry();
+    return init.mock.calls[0]?.[0];
+  }
 
   it("reports disabled and does not initialize without a DSN", () => {
     delete process.env.SENTRY_DSN;
@@ -37,5 +52,89 @@ describe("initSentry", () => {
     expect(initSentry()).toBe(true);
     expect(init).toHaveBeenCalledOnce();
     expect(init.mock.calls[0]?.[0]).toMatchObject({ dsn: "https://key@o0.ingest.de.sentry.io/1" });
+  });
+
+  it("traces state changes in full and samples routine requests", () => {
+    const { tracesSampler } = initOptions();
+    const server = (method: string, path: string) =>
+      tracesSampler({
+        name: `${method} ${path}`,
+        attributes: { "sentry.op": "http.server", "url.path": path, "http.request.method": method },
+        inheritOrSampleWith: () => 1,
+      });
+
+    expect(server("GET", "/togglestate.php")).toBe(1);
+    expect(server("POST", "/api/v1/state")).toBe(1);
+    expect(server("GET", "/api/v1/state")).toBe(0.01);
+    expect(server("GET", "/")).toBe(0.01);
+    expect(server("GET", "/.env")).toBe(0.01);
+    // Background work outside a request (config reloads) is routine too.
+    expect(tracesSampler({ name: "GET", attributes: { "sentry.op": "http.client" } })).toBe(0.01);
+  });
+
+  it("drops Sentry logs below LOG_LEVEL", () => {
+    process.env.LOG_LEVEL = "info";
+    const { beforeSendLog } = initOptions();
+    expect(beforeSendLog({ level: "debug", message: "served from pointer" })).toBeNull();
+    expect(beforeSendLog({ level: "warn", message: "rejected" })).not.toBeNull();
+  });
+
+  it("forwards debug logs with LOG_LEVEL=debug", () => {
+    process.env.LOG_LEVEL = "debug";
+    const { beforeSendLog } = initOptions();
+    expect(beforeSendLog({ level: "debug", message: "served from pointer" })).not.toBeNull();
+  });
+
+  it("scrubs tokens out of every payload kind before it is sent", () => {
+    const options = initOptions();
+    const url = `http://localhost/togglestate.php?user=Pixelbar&token=${TOKEN}`;
+
+    const event = options.beforeSend(
+      {
+        request: { url, query_string: `user=Pixelbar&token=${TOKEN}` },
+        extra: { url },
+        tags: { route: `/togglestate.php?token=${TOKEN}` },
+        exception: { values: [{ value: `Route POST:${url} not found` }] },
+      },
+      {},
+    );
+    noToken(event);
+
+    noToken(options.beforeSendTransaction({ transaction: `POST ${url}`, request: { url } }, {}));
+    noToken(
+      options.beforeSendSpan({
+        name: `POST ${url}`,
+        span_id: "a",
+        trace_id: "b",
+        start_timestamp: 0,
+        status: "ok",
+        is_segment: true,
+        attributes: { "url.full": url, "url.query": `token=${TOKEN}` },
+      }),
+    );
+    noToken(options.beforeBreadcrumb({ message: `GET ${url}`, data: { url } }));
+    const log = options.beforeSendLog({
+      level: "info",
+      message: `legacy.hit ${url}`,
+      attributes: { url, token: TOKEN },
+    });
+    expect(log).not.toBeNull();
+    noToken(log);
+  });
+
+  it("keeps the fields that are not credentials", () => {
+    const options = initOptions();
+    const span = options.beforeSendSpan({
+      name: "GET /api/v1/state",
+      span_id: "a",
+      trace_id: "b",
+      start_timestamp: 0,
+      status: "ok",
+      is_segment: true,
+      attributes: { "http.request.method": "GET", "http.response.status_code": 200 },
+    }) as { name: string; attributes: Record<string, unknown> };
+
+    expect(span.name).toBe("GET /api/v1/state");
+    expect(span.attributes).toMatchObject({ "http.request.method": "GET", "http.response.status_code": 200 });
   });
 });

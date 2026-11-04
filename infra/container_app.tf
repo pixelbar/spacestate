@@ -62,7 +62,12 @@ resource "azurerm_container_app" "spacestate" {
 
       env {
         name  = "SENTRY_ENVIRONMENT"
-        value = var.sentry_environment
+        value = local.sentry_environment
+      }
+
+      env {
+        name  = "LOG_LEVEL"
+        value = var.log_level
       }
 
       # var.sentry_enabled (default true) decides this, and its validation in
