@@ -4,7 +4,9 @@
  *   pull  diff remote → local, ask before overwriting the local file
  *   push  validate local, diff remote → local, ask before overwriting the remote blob
  *   edit  like push, but opens the remote version in $EDITOR first (result is also saved locally)
- * Options: [--account NAME] [--container NAME] [--dry-run]   (--container defaults to "config", or "webhooks" for webhooks)
+ * Options: [--env prod|dev] [--account NAME] [--container NAME] [--dry-run]
+ *   --env dev  the dev environment: config/dev/ (gitignored) and $SPACESTATE_DEV_STORAGE_ACCOUNT
+ *   --container defaults to "config", or "webhooks" for webhooks
  * Needs the Azure CLI (`az login`). The account defaults to $SPACESTATE_STORAGE_ACCOUNT.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -17,7 +19,12 @@ import type { ZodType } from "zod";
 import { apiKeysConfigSchema, legacyConfigSchema, spaceApiConfigSchema, webhooksConfigSchema } from "../src/config/schema.ts";
 import { notificationsConfigSchema } from "../src/notifications/config.ts";
 
-const LOCAL_DIR = "config/prod";
+// Each environment has its own local copies, so a dev edit can never be pushed to prod.
+const ENVS = {
+  prod: { dir: "config/prod", accountVar: "SPACESTATE_STORAGE_ACCOUNT", label: "production" },
+  dev: { dir: "config/dev", accountVar: "SPACESTATE_DEV_STORAGE_ACCOUNT", label: "dev" },
+} as const;
+type Env = keyof typeof ENVS;
 
 // `container` overrides the --container default ("config") for documents that live elsewhere.
 const CONFIGS: Record<string, { blob: string; schema: ZodType; container?: string }> = {
@@ -30,7 +37,7 @@ const CONFIGS: Record<string, { blob: string; schema: ZodType; container?: strin
 };
 
 type Mode = "pull" | "push" | "edit";
-type Args = { mode: Mode; names: string[]; account?: string; container?: string; dryRun: boolean };
+type Args = { mode: Mode; names: string[]; env: Env; account?: string; container?: string; dryRun: boolean };
 
 const dir = mkdtempSync(join(tmpdir(), "spacestate-config-"));
 
@@ -45,8 +52,9 @@ try {
 }
 
 async function run(args: Args): Promise<void> {
-  const account = args.account ?? process.env.SPACESTATE_STORAGE_ACCOUNT;
-  if (!account) throw new Error("Pass --account or set SPACESTATE_STORAGE_ACCOUNT (see .env.example).");
+  const env = ENVS[args.env];
+  const account = args.account ?? process.env[env.accountVar];
+  if (!account) throw new Error(`Pass --account or set ${env.accountVar} (see .env.example).`);
   // Azure storage account names; anything else (placeholders, brackets) makes `az` fail obscurely.
   if (!/^[a-z0-9]{3,24}$/.test(account)) {
     throw new Error(`"${account}" is not a valid storage account name (3-24 lowercase letters/digits).`);
@@ -56,7 +64,7 @@ async function run(args: Args): Promise<void> {
     const { blob, schema, ...entry } = CONFIGS[name];
     const container = args.container ?? entry.container ?? "config";
     const remote = join(dir, `remote-${blob}`);
-    const local = join(LOCAL_DIR, blob);
+    const local = join(env.dir, blob);
     const blobArgs = [
       "--account-name", account,
       "--container-name", container,
@@ -98,7 +106,8 @@ async function run(args: Args): Promise<void> {
       else throw new Error(`${blob} is not on the remote and ${local} does not exist; create ${local} first.`);
       await editUntilValid(source, schema);
     } else {
-      if (!existsSync(local)) throw new Error(`${local} not found; run \`just pull ${name}\` first.`);
+      const envFlag = args.env === "prod" ? "" : ` --env ${args.env}`;
+      if (!existsSync(local)) throw new Error(`${local} not found; run \`just pull ${name}${envFlag}\` first.`);
       const problem = validate(local, schema);
       if (problem !== undefined) throw new Error(`Invalid ${local}:\n${problem}`);
     }
@@ -111,7 +120,7 @@ async function run(args: Args): Promise<void> {
       process.stdout.write("Dry run; nothing pushed.\n");
       continue;
     }
-    if (!(await confirm(`Overwrite REMOTE ${target} (production)?`))) {
+    if (!(await confirm(`Overwrite REMOTE ${target} (${env.label})?`))) {
       process.stdout.write("Skipped; nothing pushed.\n");
       continue;
     }
@@ -184,8 +193,9 @@ function az(args: readonly string[]): void {
 }
 
 function parseArgs(argv: string[]): Args {
-  const usage = `Usage: config <pull|push|edit> [${Object.keys(CONFIGS).join("|")}] [--account NAME] [--container NAME] [--dry-run]`;
+  const usage = `Usage: config <pull|push|edit> [${Object.keys(CONFIGS).join("|")}] [--env prod|dev] [--account NAME] [--container NAME] [--dry-run]`;
   const positional: string[] = [];
+  let env: Env = "prod";
   let account: string | undefined;
   let container: string | undefined;
   let dryRun = false;
@@ -193,10 +203,13 @@ function parseArgs(argv: string[]): Args {
     const arg = argv[i];
     if (arg === "--dry-run") {
       dryRun = true;
-    } else if (arg === "--account" || arg === "--container") {
+    } else if (arg === "--env" || arg === "--account" || arg === "--container") {
       const value = argv[i + 1];
       if (value === undefined) throw new Error(`${arg} needs a value.`);
-      if (arg === "--account") account = value;
+      if (arg === "--env") {
+        if (!Object.hasOwn(ENVS, value)) throw new Error(`--env must be ${Object.keys(ENVS).join(" or ")}.`);
+        env = value as Env;
+      } else if (arg === "--account") account = value;
       else container = value;
       i += 1;
     } else if (arg !== undefined && !arg.startsWith("-")) {
@@ -209,5 +222,5 @@ function parseArgs(argv: string[]): Args {
   if ((mode !== "pull" && mode !== "push" && mode !== "edit") || extra.length > 0) throw new Error(usage);
   if (name !== undefined && !(name in CONFIGS)) throw new Error(usage);
   if (mode === "edit" && name === undefined) throw new Error(`edit needs a file name.\n${usage}`);
-  return { mode, names: name === undefined ? Object.keys(CONFIGS) : [name], account, container, dryRun };
+  return { mode, names: name === undefined ? Object.keys(CONFIGS) : [name], env, account, container, dryRun };
 }

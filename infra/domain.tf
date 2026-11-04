@@ -23,7 +23,7 @@ locals {
 }
 
 resource "terraform_data" "hostname" {
-  for_each = var.custom_domains
+  for_each = local.custom_domains
 
   triggers_replace = [each.key]
 
@@ -43,7 +43,7 @@ resource "terraform_data" "hostname" {
 }
 
 resource "azurerm_container_app_environment_managed_certificate" "spacestate" {
-  for_each                     = var.custom_domains
+  for_each                     = local.custom_domains
   name                         = replace(each.key, ".", "-")
   container_app_environment_id = azurerm_container_app_environment.spacestate.id
   subject_name                 = each.key
@@ -53,7 +53,7 @@ resource "azurerm_container_app_environment_managed_certificate" "spacestate" {
 }
 
 resource "terraform_data" "bind_certificate" {
-  for_each = var.custom_domains
+  for_each = local.custom_domains
 
   triggers_replace = [
     azurerm_container_app_environment_managed_certificate.spacestate[each.key].id,

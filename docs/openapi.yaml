@@ -55,6 +55,13 @@ info:
 
     A bad token, or a good token from an unexpected address, redirects to
     <https://www.pixelbar.nl/> rather than returning an error status.
+
+    ## Unknown paths
+
+    Anything that is not one of the paths below answers
+    `404 {"error":"not_found"}`. The body deliberately says nothing about the
+    request: the request URL can carry a legacy device token, and echoing it
+    put one in the logs.
 servers:
   - url: https://spacestate.pixelbar.nl
     description: Production

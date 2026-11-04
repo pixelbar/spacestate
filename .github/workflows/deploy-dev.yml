@@ -1,0 +1,319 @@
+name: Deploy dev
+
+# A maintainer puts a pull request, branch or commit on the dev environment
+# (Actions → Deploy dev → Run workflow, or `just deploy-dev <ref>`), to try it
+# against real Azure without touching production. Like a Release, for dev and
+# without a version: runs the CI checks on that commit, publishes GHCR
+# `:<sha>` and `:dev` (never `:latest` or a version tag), applies that
+# commit's Terraform to dev's own state and resource group, rolls the dev
+# Container App to the image and waits for /healthz.
+#
+# Unlike a Release it applies Terraform, because a pull request can change the
+# infrastructure as well as the code (a new blob container, env var or role),
+# and testing it means running both. That apply is dev's alone: dev's state
+# lives in its own container, and GitHub Environment `dev` logs in as an
+# identity that can reach only dev's resource group and dev's state (README:
+# "Dev environment"). It cannot see, plan or change prod.
+#
+# Pushes and pull requests never start it, so nothing replaces what someone is
+# testing unless a person asks. Each run replaces whatever dev was running.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Pull request number (123 or #123), branch, or commit SHA. Empty: the branch picked above."
+        required: false
+        default: ""
+
+# Least privilege at the workflow level. Jobs raise what they need.
+permissions:
+  contents: read
+
+# One dev environment, one deploy at a time. Queue, never cancel an apply halfway.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  resolve:
+    name: Resolve the commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+      label: ${{ steps.ref.outputs.label }}
+    steps:
+      - name: Resolve ref to a commit in this repository
+        id: ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through env, never interpolated into the script.
+          REF: ${{ inputs.ref }}
+          DEFAULT_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ref="${REF:-${DEFAULT_REF}}"
+          ref="${ref#\#}"
+          if ! [[ "${ref}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Not a PR number, branch or SHA: use letters, digits, . _ / -"
+            exit 1
+          fi
+          if [[ "${ref}" =~ ^[0-9]+$ ]] && [ "${#ref}" -lt 7 ]; then
+            pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${ref}")"
+            state="$(jq -r .state <<<"${pr}")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<<"${pr}")"
+            sha="$(jq -r .head.sha <<<"${pr}")"
+            branch="$(jq -r .head.ref <<<"${pr}")"
+            # A fork's code would run with dev's Azure identity. Push the branch
+            # here first if a maintainer has read it and wants it on dev.
+            if [ "${head_repo}" != "${GITHUB_REPOSITORY}" ]; then
+              echo "::error::PR #${ref} is from a fork (${head_repo:-deleted}). Only branches in ${GITHUB_REPOSITORY} deploy to dev."
+              exit 1
+            fi
+            if [ "${state}" != "open" ]; then
+              echo "::warning::PR #${ref} is ${state}; deploying its head anyway."
+            fi
+            label="PR #${ref} (${branch})"
+          else
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ref}" --jq .sha)"
+            label="${ref}"
+          fi
+          if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve ${ref} to a commit."
+            exit 1
+          fi
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+          echo "label=${label}" >> "${GITHUB_OUTPUT}"
+          echo "Deploying ${label} at ${sha} to dev." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Deploying ${label} at ${sha}."
+
+  check:
+    name: Typecheck, build, test
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: just install
+
+      # Local Table Storage emulator for the integration tests.
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite -p 10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite:latest \
+            azurite-table --tableHost 0.0.0.0 --tablePort 10002
+
+      # Whatever that commit's `just check` runs, as in its own CI.
+      - name: Typecheck, build, test
+        run: just check
+
+  publish:
+    name: Publish GHCR
+    needs: [resolve, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.pin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        env:
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          # :dev says what dev last ran. Never :latest or :vX.Y.Z, which a Release owns.
+          pin="${IMAGE_NAME}:${SHA}"
+          tags="${pin},${IMAGE_NAME}:dev"
+          echo "pin=${pin}" >> "${GITHUB_OUTPUT}"
+          echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
+          echo "Publishing ${tags}"
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Fail if the image contains secrets
+        env:
+          PIN: ${{ steps.meta.outputs.pin }}
+        run: |
+          docker pull "${PIN}"
+          if docker run --rm --entrypoint sh "${PIN}" -c 'test -e /app/.env'; then
+            echo "::error::Image ${PIN} contains .env. Do not deploy it."
+            exit 1
+          fi
+
+      # Azure pulls anonymously (infra/container_app.tf has no registry block).
+      - name: Check the image can be pulled anonymously
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:${REPO}:pull" | jq -r .token)"
+          status="$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${token}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/${REPO}/manifests/${SHA}")"
+          if [ "${status}" != "200" ]; then
+            echo "::error::Anonymous pull of ghcr.io/${REPO}:${SHA} returned ${status}. The GHCR package must be public (README: \"One-time deploy setup\")."
+            exit 1
+          fi
+
+  deploy:
+    name: Apply and roll dev
+    needs: [resolve, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: dev
+      url: ${{ steps.health.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Names from infra/environment.tf for environment = "dev". This job only
+      # ever touches dev, and its identity can reach nothing else.
+      RESOURCE_GROUP: pixelbar-spacestate-dev
+      APP_NAME: spacestate
+      IMAGE: ${{ needs.publish.outputs.image }}
+      LABEL: ${{ needs.resolve.outputs.label }}
+      # Terraform logs in with the same OIDC identity as azure/login.
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Require AZURE_* for GitHub Environment dev
+        run: |
+          missing=0
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::AZURE_${name#ARM_} is not set (a variable on GitHub Environment dev, or the repository's)."
+              missing=1
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. ${IMAGE} was published; dev was not touched. See README \"Dev environment\"."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      # Before `just tf-dev`, that commit's Terraform knew only prod. Its plan
+      # would aim at prod's names, which dev's identity cannot touch, so it
+      # would fail anyway; say why instead.
+      - name: Require a commit that knows the dev environment
+        run: |
+          if ! just --show tf-dev >/dev/null 2>&1; then
+            echo "::error::${LABEL} predates the dev environment (no \`just tf-dev\`). Merge main into it, then deploy again."
+            exit 1
+          fi
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # That commit's infra/, so a pull request that adds a container, env var
+      # or role gets it on dev. Terraform ignores the running image after the
+      # first create (infra/container_app.tf); the next step rolls it.
+      - name: Terraform apply (dev)
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${SENTRY_DSN}" ]; then
+            export TF_VAR_sentry_dsn="${SENTRY_DSN}"
+          else
+            echo "::notice::No SENTRY_DSN secret for Environment dev; dev runs without Sentry."
+            export TF_VAR_sentry_enabled=false
+          fi
+          just tf-dev init -input=false
+          just tf-dev apply -input=false -auto-approve -var "container_image=${IMAGE}"
+
+      - name: Roll the Container App to the image
+        run: |
+          set -euo pipefail
+          az containerapp update -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --image "${IMAGE}" -o none
+          running="$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" \
+            --query 'properties.template.containers[0].image' -o tsv)"
+          if [ "${running}" != "${IMAGE}" ]; then
+            echo "::error::Expected ${IMAGE}, app is configured with ${running}."
+            exit 1
+          fi
+          echo "Rolled ${APP_NAME} in ${RESOURCE_GROUP} to ${IMAGE} (${LABEL})."
+
+      - name: Wait for /healthz
+        id: health
+        run: |
+          set -euo pipefail
+          fqdn="$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" \
+            --query 'properties.configuration.ingress.fqdn' -o tsv)"
+          url="https://${fqdn}"
+          echo "url=${url}" >> "${GITHUB_OUTPUT}"
+          # Scale-to-zero: the first request wakes a replica, so retry.
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 10 "${url}/healthz" >/dev/null; then
+              echo "Dev runs ${LABEL} (${IMAGE}) at ${url}." | tee -a "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+            echo "Not healthy yet (attempt ${attempt}); waiting."
+            sleep 10
+          done
+          echo "::error::${url}/healthz did not become healthy. A missing config blob stops the app at startup: upload dev's with \`just push --env dev\` (README: \"Dev environment\"), then re-run this job. Logs: az containerapp logs show -g ${RESOURCE_GROUP} -n ${APP_NAME}"
+          exit 1
