@@ -16,8 +16,11 @@ import { legacyPlugin } from "./legacy/plugin.js";
 import { NO_NOTIFICATIONS, notificationsConfigSchema, type NotificationsConfig } from "./notifications/config.js";
 import { ConfiguredChannels } from "./notifications/configuredChannels.js";
 import { NotificationDispatcher } from "./notifications/dispatcher.js";
+import { RoutineRequestLogController } from "./observability/logController.js";
+import { loggerOptions } from "./observability/logger.js";
+import { logLevel } from "./observability/policy.js";
 import { healthPlugin } from "./plugins/health.js";
-import { registerErrorHandler } from "./plugins/errorHandler.js";
+import { registerErrorHandler, registerNotFoundHandler } from "./plugins/errorHandler.js";
 import { TableCurrentStateStore } from "./storage/currentStateTable.js";
 import { TableHistoryStore } from "./storage/historyTable.js";
 import { createTableClients } from "./storage/tableClients.js";
@@ -64,9 +67,13 @@ export async function buildApp(): Promise<BuiltApp> {
   ]);
   stateService.onChange((event) => notifications.notify(event));
 
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: { ...loggerOptions, level: logLevel() },
+    logController: new RoutineRequestLogController(),
+  });
 
   registerErrorHandler(app);
+  registerNotFoundHandler(app);
   await app.register(healthPlugin);
   await app.register(apiPlugin, { spaceApiStore, apiKeyStore, stateService, historyService });
   await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });

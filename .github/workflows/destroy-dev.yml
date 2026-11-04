@@ -1,0 +1,118 @@
+name: Destroy dev
+
+# Takes the dev environment down between stretches of feature work (Actions →
+# Destroy dev → Run workflow, or `just destroy-dev`). Removes what runs: the
+# Container App, its Container Apps environment, the Log Analytics workspace,
+# and the app's role assignments. Keeps the resource group and the storage
+# account (dev's config blobs, state history and webhooks), so the next Deploy
+# dev brings dev back as it was, at a new hostname, with no setup.
+#
+# The resource group has to stay: dev's identity is scoped to it, and deleting
+# it would delete that identity's role assignments too. Removing it as well is
+# a full teardown, by hand (README: "Dev environment").
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Deploy dev's group: never tear down in the middle of an apply, or the reverse.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+jobs:
+  destroy:
+    name: Destroy dev's app and environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Names from infra/environment.tf for environment = "dev".
+      RESOURCE_GROUP: pixelbar-spacestate-dev
+      APP_NAME: spacestate
+      # Terraform logs in with the same OIDC identity as azure/login.
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Require AZURE_* for GitHub Environment dev
+        run: |
+          missing=0
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::AZURE_${name#ARM_} is not set (a variable on GitHub Environment dev, or the repository's)."
+              missing=1
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Dev was not touched. See README \"Dev environment\"."
+            exit 1
+          fi
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Destroy with the Terraform that built what is there: a pull request's
+      # infra/ can have resources main's doesn't. Deploy dev runs the image
+      # `:<sha>`, so the tag names the commit.
+      - name: Find the commit dev runs
+        id: deployed
+        run: |
+          set -euo pipefail
+          # `list` rather than `show`: an absent app is an empty answer, a failed
+          # call still fails the step.
+          image="$(az containerapp list -g "${RESOURCE_GROUP}" \
+            --query "[?name=='${APP_NAME}'].properties.template.containers[0].image | [0]" -o tsv)"
+          tag="${image##*:}"
+          if [[ "${tag}" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="${tag}"
+            echo "Dev runs ${image}; destroying with that commit's Terraform."
+          else
+            sha="${GITHUB_SHA}"
+            echo "Dev runs ${image:-no app}; destroying with ${GITHUB_REF_NAME}'s Terraform (${sha})."
+          fi
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ steps.deployed.outputs.sha }}
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      # Targeting the environment and the workspace also destroys everything
+      # that depends on them: the app, its role assignments and any hostname or
+      # certificate. Nothing else is touched, terraform_data.environment
+      # included, so this needs no `state rm`. Already destroyed: no changes.
+      - name: Terraform destroy (dev's app and environment)
+        env:
+          # A destroy reads no DSN and runs no image; these only satisfy validation.
+          TF_VAR_sentry_enabled: "false"
+          TF_VAR_container_image: unused
+        run: |
+          set -euo pipefail
+          just tf-dev init -input=false
+          just tf-dev destroy -input=false -auto-approve \
+            -target=azurerm_container_app_environment.spacestate \
+            -target=azurerm_log_analytics_workspace.spacestate
+          {
+            echo "Dev's app and environment are destroyed."
+            echo "Kept: resource group ${RESOURCE_GROUP} and its storage (config, state history, webhooks)."
+            echo "Run Deploy dev to bring it back."
+          } | tee -a "${GITHUB_STEP_SUMMARY}"

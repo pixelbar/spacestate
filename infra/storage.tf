@@ -4,7 +4,7 @@
 # config blobs; its *contents* are managed out-of-band (az storage blob
 # upload), not by Terraform, so editing config never needs a plan/apply.
 resource "azurerm_storage_account" "spacestate" {
-  name                     = replace("${var.resource_group_name}st", "-", "")
+  name                     = replace("${local.resource_group_name}st", "-", "")
   resource_group_name      = azurerm_resource_group.spacestate.name
   location                 = azurerm_resource_group.spacestate.location
   account_tier             = "Standard"

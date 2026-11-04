@@ -4,8 +4,10 @@ const iconSchema = z.object({ open: z.string(), closed: z.string() });
 
 /**
  * The static part of the public SpaceAPI document — exactly the JSON served
- * at spaceapi.pixelbar.nl minus the dynamic fields (`open`, `state.open`,
- * `state.lastchange`), which the builder fills in from live state.
+ * at spaceapi.pixelbar.nl minus the two dynamic fields (`open` and
+ * `state.open`), which the builder fills in from live state. There is no
+ * `state.lastchange`: the legacy document never carried one, and
+ * test/contract/ holds the document to what legacy serves.
  * Unknown keys are preserved so new SpaceAPI fields only need a config edit.
  */
 export const spaceApiConfigSchema = z
