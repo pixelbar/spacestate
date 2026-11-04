@@ -29,6 +29,21 @@ describe("error handler", () => {
     expect(captureException.mock.calls[0]?.[1]).toMatchObject({ tags: { route: "/boom" } });
   });
 
+  it("redacts the legacy token from the Sentry route tag and url extra", async () => {
+    // Never a real credential — a made-up value.
+    const token = "s3cr3t-test-token";
+    const res = await buildApp().inject({
+      method: "GET",
+      url: `/boom?user=Pixelbar&token=${token}`,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(JSON.stringify(captureException.mock.calls)).not.toContain(token);
+    expect(captureException.mock.calls[0]?.[1]).toMatchObject({
+      extra: { method: "GET", url: "/boom?user=Pixelbar&token=[redacted]" },
+    });
+  });
+
   it("does not report 4xx errors", async () => {
     const res = await buildApp().inject({ method: "GET", url: "/bad" });
     expect(res.statusCode).toBe(400);
