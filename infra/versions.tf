@@ -18,6 +18,12 @@ provider "azurerm" {
   # one this stack needs (Microsoft.App, .Storage, .OperationalInsights).
   resource_provider_registrations = "none"
 
+  # The storage account refuses shared keys (see storage.tf), so any data-plane
+  # call the provider makes has to use Azure AD. Containers and tables are
+  # managed through ARM (`storage_account_id`), so a plan/apply needs no
+  # Storage Blob/Table Data role.
+  storage_use_azuread = true
+
   features {
     log_analytics_workspace {
       # Destroy dev deletes dev's workspace and the next Deploy dev recreates it

@@ -111,6 +111,14 @@ with a sample under `config/`:
 - `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
 - `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
 
+`api-keys.yaml` and `legacy.yaml` hold credentials, so the storage account
+accepts Azure AD only: account keys, connection strings and SAS tokens are
+refused (`shared_access_key_enabled = false`). Reading a blob therefore takes a
+Storage Blob Data role, not just Contributor on the resource group, which the
+prod CI identity has. The app has Storage Blob Data Reader on the `config`
+container; whoever runs `just push` needs Storage Blob Data Contributor there.
+Every command below passes `--auth-mode login`.
+
 After the first `apply`, upload real ones:
 
 ```sh
@@ -168,7 +176,10 @@ no `SENTRY_DSN` on the container) and the `sentry_enabled` output reads `false`.
 
 There is no Key Vault in this stack, and `just pull`/`push`/`edit` only move the
 three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
-Terraform is the one place the DSN lives. Rotating it is an `apply`.
+Terraform is the one place the DSN lives. Rotating it is an `apply`. The
+credentials in the config blobs don't need a vault either: the app has to read
+them and the operators have to edit them, and with account keys disabled a
+Storage Blob Data role, scoped to the `config` container, is the only way in.
 
 What is reported: 5xx errors (with route/method), config reload and
 state-pointer failures, and startup crashes, as Issues; and every

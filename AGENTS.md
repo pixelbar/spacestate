@@ -187,6 +187,11 @@ wrong:
   its Role Based Access Control Administrator assignment). A PR that adds a
   role assignment of another kind fails on dev with a 403 until an admin
   extends the condition. This is deliberate, so don't route around it.
+- **The storage account takes Azure AD only** (`shared_access_key_enabled =
+  false`, and `storage_use_azuread` on the provider). Use
+  `DefaultAzureCredential` in code and `--auth-mode login` with `az storage`;
+  an account key, connection string or SAS fails with a 403. The Azurite
+  connection string in `docker-compose.yml` and the tests is local only.
 - **`--env dev` for dev's config** (`just pull|push|edit --env dev`, local copies
   in `config/dev/`). Without it, the commands are prod's.
 - **Dev's notification channels point at test accounts.** A state change on dev
