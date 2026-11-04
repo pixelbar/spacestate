@@ -159,6 +159,62 @@ endpoints send `Access-Control-Allow-Origin: *` and work; `POST /api/v1/state`
 does not set CORS headers, so trying it from the docs page fails in the
 browser. Curl and the code samples are unaffected.
 
+## Legacy parity contract tests
+
+`just test-contract` proves this service's outputs still match the legacy PHP
+system's. `test/contract/README.md` is the reference: what "identical" means
+per endpoint, which headers must match, and every difference that is there on
+purpose. Three things are easy to get wrong:
+
+- **Never call `togglestate.php` or `togglebaker.php` on a live host**, with
+  or without a token. They change the real space status. Only the read
+  endpoints were recorded, `GET`-only, and no fixture contains a token.
+- **The fixtures under `test/fixtures/legacy/` have no trailing newline**,
+  because PHP's `echo` emitted none and `/spacestate.php` is compared
+  byte-for-byte. An editor that adds one fails the suite.
+- **Editing `config/spaceapi.sample.json` (or the production blob) can break
+  the parity tests**, which is the point — the SpaceAPI document is config
+  plus two live booleans, so a config edit is a change to the public output.
+  Re-run `just test-contract` after touching it.
+
+Every intentional difference in that README is backed by an assertion, so the
+list cannot quietly go stale: if a difference disappears, a test fails and the
+README is what needs editing.
+
+## Dev environment
+
+`README.md` "Dev environment" is the reference. Actions → Deploy dev (`just
+deploy-dev <PR|branch|SHA>`) puts a ref on a separate Azure deployment, and,
+unlike a Release, applies **that ref's** Terraform there. That is what lets a
+PR that changes `infra/` be tested at all. The things that are easy to get
+wrong:
+
+- **`just tf-dev` is dev; plain `terraform` in `infra/` is prod.** They share
+  one root and differ only in `environment` and the backend. Never pass
+  `-var environment=dev` by hand. `terraform_data.environment` makes a
+  mismatched plan fail, but only once that environment has been applied with
+  it.
+- **Keep prod's plan empty.** `infra/environment.tf` derives every name from
+  `environment`, and prod's must stay exactly what they were (resource group
+  `pixelbar-spacestate`, storage `pixelbarspacestatest`). A new resource or
+  default that differs per environment goes through those locals, not a
+  changed default.
+- **The dev identity can grant only the app's storage roles** (a condition on
+  its Role Based Access Control Administrator assignment). A PR that adds a
+  role assignment of another kind fails on dev with a 403 until an admin
+  extends the condition. This is deliberate, so don't route around it.
+- **`--env dev` for dev's config** (`just pull|push|edit --env dev`, local copies
+  in `config/dev/`). Without it, the commands are prod's.
+- **Dev's notification channels point at test accounts.** A state change on dev
+  is real to whoever follows the channel.
+- **A branch from before dev existed is refused** (no `just tf-dev`). Merge
+  `main` into it; for a stack, into the bottom PR first.
+- **Destroy dev keeps the resource group and storage on purpose.** The CI
+  identity's roles are scoped to that group, so deleting it locks Deploy dev
+  out until an admin repeats the setup. Don't widen Destroy dev's `-target`s to
+  the group or the storage account. If a resource has to go on a pause, it
+  should depend on the environment or the workspace, so the targets reach it.
+
 ## Changelog
 
 Every PR needs a `CHANGELOG.md` entry under `[Unreleased]`, enforced by CI. Add

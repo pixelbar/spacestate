@@ -53,6 +53,10 @@ jobs:
       - name: Unit tests
         run: just test-unit
 
+      # Legacy parity — needs no Azurite, see test/contract/README.md.
+      - name: Contract tests
+        run: just test-contract
+
       - name: Integration tests
         run: just test-integration
 
