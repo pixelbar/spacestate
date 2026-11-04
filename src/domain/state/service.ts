@@ -5,12 +5,15 @@ import type {
   CurrentStateStore,
   SpaceState,
   StateChangeInput,
+  StateChangeListener,
   StateChangeResult,
 } from "./types.js";
 
 const DEFAULT_STATE: SpaceState = "closed";
 
 export class StateService {
+  private readonly listeners: StateChangeListener[] = [];
+
   /** The fallback the last read used, so each is reported once rather than on every poll. */
   private fallback: "history" | "default" | undefined;
 
@@ -18,6 +21,15 @@ export class StateService {
     private readonly currentStateStore: CurrentStateStore,
     private readonly historyStore: HistoryStore,
   ) {}
+
+  /**
+   * Registers a callback run after every state change that was recorded (not
+   * for no-ops). Listeners are fire-and-forget: they are not awaited, and one
+   * that throws is reported without affecting the change or other listeners.
+   */
+  onChange(listener: StateChangeListener): void {
+    this.listeners.push(listener);
+  }
 
   // Every poll reads the state, so a normal read logs at debug and a
   // fallback is reported when it starts. Failures propagate to the route,
@@ -109,6 +121,14 @@ export class StateService {
         await this.currentStateStore.clear();
       } catch (clearErr) {
         Sentry.captureException(clearErr);
+      }
+    }
+
+    for (const listener of this.listeners) {
+      try {
+        listener({ snapshot, previousState: current.state });
+      } catch (err) {
+        Sentry.captureException(err);
       }
     }
 

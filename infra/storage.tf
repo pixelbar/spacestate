@@ -27,3 +27,13 @@ resource "azurerm_storage_container" "config" {
   storage_account_id    = azurerm_storage_account.spacestate.id
   container_access_type = "private"
 }
+
+# Registered webhooks (webhooks.yaml). Unlike the config container, the app
+# itself writes here (POST /api/v1/webhooks), so it gets its own container and
+# the only write grant on the account's blobs — a compromised app can then
+# change who is notified, but not mint API keys or rewrite the SpaceAPI document.
+resource "azurerm_storage_container" "webhooks" {
+  name                  = "webhooks"
+  storage_account_id    = azurerm_storage_account.spacestate.id
+  container_access_type = "private"
+}

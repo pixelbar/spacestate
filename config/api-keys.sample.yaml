@@ -6,3 +6,6 @@ apiKeys:
   - id: "dev-writer"
     key: "dev-write-key-0000000000"
     role: "write"
+  - id: "dev-other-writer"
+    key: "dev-other-write-key-000000"
+    role: "write"

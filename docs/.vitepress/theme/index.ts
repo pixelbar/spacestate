@@ -2,6 +2,7 @@ import type { Theme } from "vitepress";
 import DefaultTheme from "vitepress/theme";
 import { theme, useOpenapi, usePlayground } from "vitepress-openapi/client";
 import spec from "../openapi.json" with { type: "json" };
+import Mermaid from "./Mermaid.vue";
 
 import "vitepress-openapi/dist/style.css";
 import "./pixel.css";
@@ -10,6 +11,7 @@ import "./openapi.css";
 export default {
   extends: DefaultTheme,
   async enhanceApp(ctx) {
+    ctx.app.component("Mermaid", Mermaid);
     useOpenapi({
       spec,
       config: {

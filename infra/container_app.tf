@@ -43,6 +43,18 @@ resource "azurerm_container_app" "spacestate" {
         value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/legacy.yaml"
       }
 
+      # Optional: until notifications.yaml is uploaded the app runs without
+      # announcing changes, and picks it up within minutes once it is.
+      env {
+        name  = "NOTIFICATIONS_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/notifications.yaml"
+      }
+
+      env {
+        name  = "WEBHOOKS_CONFIG_SOURCE"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.webhooks.name}/webhooks.yaml"
+      }
+
       env {
         name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.spacestate.name
@@ -112,6 +124,13 @@ resource "azurerm_container_app" "spacestate" {
 resource "azurerm_role_assignment" "config_blob_reader" {
   scope                = "${azurerm_storage_account.spacestate.id}/blobServices/default/containers/${azurerm_storage_container.config.name}"
   role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azurerm_container_app.spacestate.identity[0].principal_id
+}
+
+# Read-write, but only on the webhooks container (see storage.tf).
+resource "azurerm_role_assignment" "webhooks_blob_contributor" {
+  scope                = "${azurerm_storage_account.spacestate.id}/blobServices/default/containers/${azurerm_storage_container.webhooks.name}"
+  role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_container_app.spacestate.identity[0].principal_id
 }
 
