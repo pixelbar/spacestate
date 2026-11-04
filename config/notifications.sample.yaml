@@ -1,0 +1,53 @@
+# Sample notifications config for local development and tests. Not used in
+# production, where notifications.yaml is a blob next to api-keys.yaml (and,
+# like it, holds secrets). Every channel here is disabled: they carry
+# placeholder credentials. See README "Notifications".
+
+# For {time} and {date} in messages.
+timeZone: "Europe/Amsterdam"
+
+# Optional. Placeholders: {space} {state} {previousState} {changedBy} {method} {time} {date}.
+# A channel's own `messages` override these for that channel. Setting them
+# here also replaces a channel type's own defaults (X's include {time}), so
+# they are left unset:
+# messages:
+#   open: "{space} is open."
+#   closed: "{space} is closed."
+
+channels:
+  # Posts a status. Token: Preferences → Development → New application, with
+  # only the write:statuses scope.
+  - type: mastodon
+    id: pixelbar
+    enabled: false
+    instance: "https://mastodon.example"
+    accessToken: "replace-with-the-application-access-token"
+    visibility: public          # or unlisted | private | direct
+    language: en                # optional
+
+  # Posts to X. Keys from the X developer portal: the app's API key and
+  # secret, and the account's access token and secret (Read and Write).
+  # Its default messages include {time}: X refuses a post identical to a
+  # recent one.
+  - type: twitter
+    id: pixelbar-x
+    enabled: false
+    consumerKey: "replace-with-the-api-key"
+    consumerSecret: "replace-with-the-api-key-secret"
+    accessToken: "replace-with-the-access-token"
+    accessTokenSecret: "replace-with-the-access-token-secret"
+
+  # Says it in IRC channels: connects, joins, speaks and quits each time.
+  - type: irc
+    id: libera
+    enabled: false
+    server: "irc.libera.chat"
+    # port: 6697                # default: 6697 with TLS, 6667 without
+    # tls: true
+    nick: "pixelbar-state"
+    # sasl:                     # log in to a services account; some networks require it from cloud addresses
+    #   account: "pixelbar-state"
+    #   password: "replace-with-the-services-password"
+    channels: ["#pixelbar"]
+    # join: true                # false for channels that accept outside messages (no +n)
+    # notice: false             # true to send a NOTICE instead of a PRIVMSG

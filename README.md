@@ -31,6 +31,10 @@ just docs-preview   # hot-reloading preview on http://localhost:8000/spacestate/
 just docs-build     # build only, into docs/.vitepress/dist/
 ```
 
+The same site has a [Maintainers](https://pixelbar.nl/spacestate/maintainers/)
+section, hand-written under `docs/maintainers/`, on how the service behaves for
+the people running it (notifications, for now).
+
 See [`AGENTS.md`](AGENTS.md) for refreshing the theme from `/pixel`, previewing
 over Tailscale, and the two spec rules the build enforces.
 
@@ -102,14 +106,19 @@ az storage container create --account-name pixelbartfstate --name spacestate --a
 terraform init -migrate-state -backend-config=backend.azurerm.hcl
 ```
 
-The app reads its config from three blobs rather than a database, each
-with a sample under `config/`:
+The app reads its config from blobs rather than a database, each with a
+sample under `config/`:
 
 - `spaceapi.json` — the public SpaceAPI document, exactly as served, minus
   the live fields (`open`, `state.open`), which come from current state
   (`config/spaceapi.sample.json`)
 - `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
 - `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
+- `notifications.yaml` — where state changes are announced, and the
+  credentials to do it (`config/notifications.sample.yaml`). Optional: see
+  "Notifications"
+
+plus `webhooks.yaml`, which the app writes itself (see "Webhooks").
 
 `api-keys.yaml` and `legacy.yaml` hold credentials, so the storage account
 accepts Azure AD only: account keys, connection strings and SAS tokens are
@@ -136,7 +145,7 @@ To change a live config safely (pull, edit, validate, review diff, confirm, push
 
 ```sh
 cp .env.example .env   # then set SPACESTATE_STORAGE_ACCOUNT (just loads .env automatically)
-just edit spaceapi   # or api-keys | legacy: edit remote in $EDITOR, diff, confirm, push
+just edit spaceapi   # or api-keys | legacy | notifications: edit remote in $EDITOR, diff, confirm, push
 just pull            # diff remote vs config/prod/ (gitignored), confirm overwriting local
 just push            # diff remote vs config/prod/, confirm overwriting remote (add a name for one file)
 ```
@@ -145,11 +154,187 @@ To add an API key: `just api-key <id> --role read|write --add` appends a freshly
 generated key to `config/prod/api-keys.yaml`, then `just push api-keys`.
 
 Locally, override the sources with `SPACEAPI_CONFIG_SOURCE`,
-`API_KEYS_CONFIG_SOURCE` and `LEGACY_CONFIG_SOURCE` (`file://` or `blob://`).
+`API_KEYS_CONFIG_SOURCE`, `LEGACY_CONFIG_SOURCE` and
+`NOTIFICATIONS_CONFIG_SOURCE` (`file://` or `blob://`).
 
 Editing those blobs later takes effect on the next cold start (or within a
 few minutes if a replica is already running — see `src/config/loader.ts`),
 no redeploy needed.
+
+## Notifications
+
+Every recorded state change — from `/api/v1` or the legacy endpoints, never a
+no-op request — is announced to subscribers. The
+[Maintainers pages](https://pixelbar.nl/spacestate/maintainers/notifications/)
+cover this in more depth: delivery rules, the log messages, adding a channel
+type. The pieces, in `src/notifications/`:
+
+- **`NotificationDispatcher`** fans a change out to every subscriber of every
+  source. It is fire-and-forget (the request that changed the state never waits),
+  times each attempt out (10 s unless the subscriber says otherwise), retries
+  failures after 1 s, 5 s and 30 s, and delivers to each subscriber in order,
+  so a retried "open" is never posted after the "closed" that followed it.
+  Outcomes go to Sentry Logs (`Notification delivered` / `Notification
+  delivery failed`, with the subscriber id).
+- **A subscriber** makes one attempt per call and throws to fail it — a
+  `DeliveryError` with `retryable: false` when retrying cannot help (a revoked
+  token, say).
+- **A subscriber source** is asked for its subscribers on every change, so the
+  set can change at runtime. `ConfiguredChannels` is the operator's list in
+  `notifications.yaml`; `WebhookSubscribers` is the URLs clients registered
+  through the API (see "Webhooks").
+
+`notifications.yaml` lists channels by `type`, each validated by that type's
+schema (so `just edit notifications` catches a misspelt field before it is
+pushed), plus the messages they post:
+
+```yaml
+timeZone: Europe/Amsterdam        # for {time} and {date}
+messages:                         # optional; these are the defaults
+  open: "{space} is open."
+  closed: "{space} is closed."
+channels:
+  - type: <channel type>
+    id: pixelbar                  # logged as <type>:<id>
+    enabled: true                 # false keeps the entry without posting
+    messages: { open: "…" }       # optional, overrides the above for this channel
+    # …whatever that type needs
+```
+
+Placeholders are `{space}` (the SpaceAPI `space` name), `{state}`,
+`{previousState}`, `{changedBy}`, `{method}`, `{time}` and `{date}`; an
+unknown one fails validation. `{changedBy}` is whoever flipped the switch, so
+think before publishing it.
+
+The document is optional. Without it, or while it fails validation, the app
+serves state as usual and announces nothing (a broken one is reported to
+Sentry); an upload is picked up within five minutes, no restart needed. In
+production it sits next to the other config blobs, and holds secrets like
+`api-keys.yaml` does.
+
+Adding a channel type is a module exporting a `ChannelType` (a schema that
+extends `channelBaseSchema`, and a `create` that returns a subscriber) plus a
+line in `src/notifications/channels/index.ts`.
+
+### Webhooks
+
+Other clients can register a URL to be notified when the space opens or
+closes, instead of polling `GET /api/v1/state`. With a `write` API key:
+
+```sh
+curl -X POST https://spacestate.pixelbar.nl/api/v1/webhooks \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"url": "https://hooks.example.org/pixelbar", "description": "Door sign"}'
+# -> {"id": "wh_…", "secret": "…", …}   the secret is shown once
+```
+
+`GET /api/v1/webhooks` lists your registrations (without secrets) and
+`DELETE /api/v1/webhooks/{id}` removes one. Each API key sees and manages only
+the webhooks it registered (another key's id answers 404), up to 20 per key.
+On every change the dispatcher POSTs a JSON body (`state`, `previousState`,
+`changedAt`, …) to each URL, signed with
+`X-Spacestate-Signature: sha256=HMAC(secret, "<timestamp>.<body>")`, with a
+5 s timeout and the usual retries; see the Webhooks section of the API
+reference for the contract receivers can rely on.
+
+Registrations live in `webhooks.yaml` (sample: `config/webhooks.sample.yaml`),
+read and written by the app itself, so they survive restarts and redeploys. In
+production it is a blob in the separate `webhooks` container, the only one the
+app's identity can write to (the `config` container stays read-only). Writes
+are conditional on the blob's ETag and retried on conflict, so two replicas
+registering at once don't lose entries; a registration reaches the other
+replicas within about a minute. `just edit webhooks` edits the live file, but
+prefer the API: a stale local copy pushed back would drop newer registrations
+(the diff shown before the push is the safeguard).
+
+Targets must be public `https://` URLs: credentials in the URL, `localhost`,
+private/link-local addresses and hostnames that resolve to them are refused,
+at registration and again at delivery, and redirects are not followed. For
+local development, `WEBHOOK_ALLOW_INSECURE=true` and
+`WEBHOOK_ALLOW_PRIVATE_TARGETS=true` lift those rules. `WEBHOOKS_CONFIG_SOURCE`
+(`file://` or `blob://`) overrides the location; locally it defaults to
+`config/prod/webhooks.yaml`, created on the first registration.
+
+Existing deployments: `terraform apply` creates the `webhooks` container, its
+role assignment and the env var; nothing needs uploading, as a missing
+`webhooks.yaml` just means no webhooks yet.
+
+### Mastodon
+
+Posts a status to one account. On that account, create an application under
+Preferences → Development with only the `write:statuses` scope, and copy its
+access token into `notifications.yaml`:
+
+```yaml
+channels:
+  - type: mastodon
+    id: pixelbar
+    instance: https://mastodon.example   # the account's home instance
+    accessToken: "…"
+    visibility: public                   # optional: unlisted | private | direct
+    language: nl                         # optional, ISO 639-1
+```
+
+Each post carries an `Idempotency-Key`, so a retry after a lost response does
+not post twice. A rejected token (401/403) or post (422) is not retried; the
+reason Mastodon gives is in the `Notification delivery failed` log. Turn off
+whatever else posts the state to the account (the VPS that does it today)
+when enabling this, or every change is announced twice.
+
+### Twitter / X
+
+Posts to one X account through the v2 API, signed with OAuth 1.0a. In the X
+developer portal, give the app Read and Write permission, then generate the
+posting account's access token and secret (regenerate them if they predate the
+permission change):
+
+```yaml
+channels:
+  - type: twitter
+    id: pixelbar-x
+    consumerKey: "…"          # the app's API key
+    consumerSecret: "…"       # and its secret
+    accessToken: "…"          # the account's access token
+    accessTokenSecret: "…"    # and its secret
+```
+
+X refuses a post identical to a recent one ("duplicate content", 403, not
+retried), and the space opens and closes most days, so this channel's default
+messages are `{space} opened at {time}.` / `{space} closed at {time}.`.
+Document-wide `messages` replace those defaults too, so if you set them, keep a
+`{time}` in this channel's own. The same rule stops a retry after a lost
+response from posting twice. X's API quotas change often; check the developer
+portal that the account's tier allows a few posts a day.
+
+### IRC
+
+Says the message in one or more IRC channels:
+
+```yaml
+channels:
+  - type: irc
+    id: libera
+    server: irc.libera.chat
+    nick: pixelbar-state
+    channels: ["#pixelbar"]
+    # port: 6697                # default: 6697 with TLS, 6667 without
+    # tls: true
+    # password: "…"             # server password (PASS), for a bouncer
+    # sasl: { account: pixelbar-state, password: "…" }
+    # join: true                # false for channels without +n: no join/part noise
+    # notice: false             # true to send a NOTICE, as bots conventionally do
+```
+
+Each change is its own connection: connect, register, join, speak, quit. The
+app scales to zero, so a resident bot would keep dropping off; changes are rare
+enough that the join/part is the lesser noise (or set `join: false`). The
+delivery only counts once the server has answered a PING sent after the
+message, so "cannot send to channel" fails it instead of passing silently. A
+taken nick gets a digit appended. A refused SASL login, ban or channel mode is
+not retried; the reason is in the `Notification delivery failed` log. Some
+networks restrict connections from cloud providers' addresses unless they log
+in with SASL; if the connection is refused, register the nick with the
+network's services and configure `sasl`.
 
 ## Observability
 

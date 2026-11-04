@@ -73,7 +73,7 @@ changelog-merge-driver:
 bump *args:
     npm run --silent bump -- {{args}}
 
-# Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy (omit for all).
+# Live config blobs <-> config/prod/ (gitignored). name: spaceapi | api-keys | legacy | notifications | webhooks (omit for all).
 # Needs `az login` and $SPACESTATE_STORAGE_ACCOUNT (or --account NAME in args).
 # Add `--env dev` for the dev environment: config/dev/ and $SPACESTATE_DEV_STORAGE_ACCOUNT.
 

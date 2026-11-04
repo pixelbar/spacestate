@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StateService } from "../../src/domain/state/service.js";
 import type { HistoryEntry, HistoryPage, HistoryQuery, HistoryStore } from "../../src/domain/history/types.js";
-import type { CurrentStateSnapshot, CurrentStateStore } from "../../src/domain/state/types.js";
+import type { CurrentStateSnapshot, CurrentStateStore, StateChangedEvent } from "../../src/domain/state/types.js";
 
 class FakeCurrentStateStore implements CurrentStateStore {
   snapshot: CurrentStateSnapshot | undefined;
@@ -99,5 +99,30 @@ describe("StateService", () => {
 
     expect(currentStateStore.snapshot).toBeUndefined();
     expect((await service.getCurrentState()).state).toBe("closed");
+  });
+
+  it("tells onChange listeners about recorded changes only, with the previous state", async () => {
+    const service = new StateService(new FakeCurrentStateStore(), new FakeHistoryStore());
+    const events: StateChangedEvent[] = [];
+    service.onChange((event) => events.push(event));
+
+    await service.changeState({ state: "open", user: "alice", method: "api", source: "api" });
+    await service.changeState({ state: "open", user: "bob", method: "api", source: "api" });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ previousState: "closed", snapshot: { state: "open", changedBy: "alice" } });
+  });
+
+  it("does not let a throwing listener fail the change or starve other listeners", async () => {
+    const service = new StateService(new FakeCurrentStateStore(), new FakeHistoryStore());
+    const seen: string[] = [];
+    service.onChange(() => {
+      throw new Error("listener bug");
+    });
+    service.onChange((event) => seen.push(event.snapshot.state));
+
+    const result = await service.changeState({ state: "open", user: "alice", method: "api", source: "api" });
+    expect(result.changed).toBe(true);
+    expect(seen).toEqual(["open"]);
   });
 });
