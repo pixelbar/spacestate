@@ -14,7 +14,7 @@ repository:
 
 | Document | What it holds |
 | --- | --- |
-| `spaceapi.json` | The public SpaceAPI document, minus the live fields |
+| `spaceapi.yaml` | The public SpaceAPI document for every version, minus the live fields — see [SpaceAPI document](/maintainers/spaceapi) |
 | `api-keys.yaml` | API keys for `/api/v1` |
 | `legacy.yaml` | Credentials for devices on the legacy endpoints |
 | `notifications.yaml` | Where state changes are announced — see [Notifications](/maintainers/notifications/) |
@@ -32,6 +32,8 @@ repository's
 
 ## Topics
 
+- [SpaceAPI document](/maintainers/spaceapi) — the versions we serve, and
+  editing the one config they all come from.
 - [Notifications](/maintainers/notifications/) — announcing every state change
   to subscribers, and adding new kinds of subscriber.
   - [Webhooks](/maintainers/notifications/webhooks) — URLs clients register

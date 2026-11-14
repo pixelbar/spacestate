@@ -1,34 +1,54 @@
 import { z } from "zod";
+import { buildSpaceApiDocument, type SpaceApiConfig } from "../domain/spaceapi/builder.js";
+import { renderStaticDocuments } from "../domain/spaceapi/render.js";
+import { validateSpaceApiDocument } from "../domain/spaceapi/validate.js";
+import { SPACEAPI_VERSIONS } from "../domain/spaceapi/versions.js";
 
-const iconSchema = z.object({ open: z.string(), closed: z.string() });
+export type { SpaceApiConfig } from "../domain/spaceapi/builder.js";
 
 /**
- * The static part of the public SpaceAPI document — exactly the JSON served
- * at spaceapi.pixelbar.nl minus the two dynamic fields (`open` and
- * `state.open`), which the builder fills in from live state. There is no
- * `state.lastchange`: the legacy document never carried one, and
- * test/contract/ holds the document to what legacy serves.
- * Unknown keys are preserved so new SpaceAPI fields only need a config edit.
+ * `spaceapi.yaml`: the public SpaceAPI document for every version served
+ * (see src/domain/spaceapi/versions.ts). `shared` is what every version has in
+ * common; each `versioned` fragment adds what only the listed versions have,
+ * deep-merged into `shared`. Parsing renders each version and validates it
+ * against that version's official schema in strict mode, so a key in the
+ * wrong version, or a missing required one, fails here and not in prod.
+ * The live fields (`api`/`api_compatibility`, `state.open`,
+ * `state.lastchange`) are the service's and may not be set.
  */
 export const spaceApiConfigSchema = z
   .object({
-    api: z.string(),
-    space: z.string(),
-    logo: z.string(),
-    url: z.string(),
-    location: z.object({ address: z.string(), lon: z.number(), lat: z.number() }).passthrough(),
-    contact: z.object({ email: z.string() }).passthrough(),
-    spacefed: z.object({
-      spacenet: z.boolean(),
-      spacesaml: z.boolean(),
-      spacephone: z.boolean(),
-    }),
-    icon: iconSchema,
-    state: z.object({ icon: iconSchema }).passthrough(),
-    issue_report_channels: z.array(z.string()),
-    projects: z.array(z.string()),
+    shared: z.record(z.string(), z.unknown()),
+    versioned: z
+      .array(
+        z
+          .object({
+            versions: z
+              .array(z.enum(SPACEAPI_VERSIONS, { error: `versions must be among ${SPACEAPI_VERSIONS.join(", ")} (quote them: "14")` }))
+              .min(1),
+          })
+          .catchall(z.unknown()),
+      )
+      .default([]),
   })
-  .passthrough();
+  .strict()
+  .transform((file, ctx): SpaceApiConfig => {
+    const { documents, problems } = renderStaticDocuments(file);
+    for (const version of SPACEAPI_VERSIONS) {
+      // Placeholder live fields, so required ones (0.13's `state.open`) are present.
+      const sample = buildSpaceApiDocument({ space: "", documents }, version, {
+        state: "closed",
+        changedAt: "2000-01-01T00:00:00Z",
+      });
+      for (const problem of validateSpaceApiDocument(version, sample)) problems.push(`SpaceAPI ${version}: ${problem}`);
+    }
+    for (const message of problems) ctx.addIssue({ code: "custom", message });
+    const space = file.shared.space;
+    if (typeof space !== "string") {
+      ctx.addIssue({ code: "custom", message: "shared.space must be the space's name", path: ["shared", "space"] });
+    }
+    return { space: typeof space === "string" ? space : "", documents };
+  });
 
 const apiKeyEntrySchema = z.object({
   id: z.string(),
@@ -66,7 +86,6 @@ export const webhooksConfigSchema = z.object({
   webhooks: z.array(webhookEntrySchema).default([]),
 });
 
-export type SpaceApiConfig = z.infer<typeof spaceApiConfigSchema>;
 export type ApiKeysConfig = z.infer<typeof apiKeysConfigSchema>;
 export type LegacyConfig = z.infer<typeof legacyConfigSchema>;
 export type ApiKeyEntry = z.infer<typeof apiKeyEntrySchema>;

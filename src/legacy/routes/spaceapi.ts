@@ -1,24 +1,21 @@
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
 import { buildSpaceApiDocument } from "../../domain/spaceapi/builder.js";
+import { LATEST_SPACEAPI_VERSION } from "../../domain/spaceapi/versions.js";
 import type { LegacyPluginOptions } from "../plugin.js";
 
 /**
- * Served at both /index.php and the bare root: Apache's directory-index
- * behavior made "/" the de facto public address for the old SpaceAPI
- * document, so any existing directory listing/dashboard likely points at
- * the domain root rather than /index.php explicitly.
+ * The old SpaceApiScripts address. It serves what `/` serves (the latest
+ * version), which is in the API routes: `/` is the address the SpaceAPI
+ * directory lists, so it must outlive this shim.
  */
 export const legacySpaceApiRoute: FastifyPluginAsync<LegacyPluginOptions> = async (
   fastify,
   { stateService, spaceApiStore },
 ) => {
-  const handler = async (_request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get("/index.php", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
     reply.header("Cache-Control", "no-cache");
     const snapshot = await stateService.getCurrentState();
-    return buildSpaceApiDocument(spaceApiStore.get(), snapshot);
-  };
-
-  fastify.get("/index.php", handler);
-  fastify.get("/", handler);
+    return buildSpaceApiDocument(spaceApiStore.get(), LATEST_SPACEAPI_VERSION, snapshot);
+  });
 };

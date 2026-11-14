@@ -6,7 +6,7 @@ export type { ConfigSource, WritableConfigSource } from "./types.js";
 
 /**
  * CONFIG_SOURCE selects where the config document is loaded from:
- *   - file://./config/spaceapi.sample.json  (local dev, tests)
+ *   - file://./config/spaceapi.sample.yaml  (local dev, tests)
  *   - blob://<account>/<container>/<blob>  (production, via managed identity)
  */
 export function createConfigSource(configSourceUrl: string): WritableConfigSource {

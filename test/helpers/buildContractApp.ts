@@ -18,6 +18,8 @@ export interface ContractApp {
   app: FastifyInstance;
   /** Puts the service in a known state without going through an endpoint. */
   seedState(state: SpaceState): void;
+  /** When the seeded state last changed. */
+  changedAt: string;
   close(): Promise<void>;
 }
 
@@ -26,8 +28,8 @@ export interface ContractApp {
  * stores instead of Table Storage.
  *
  * Deliberately not `buildTestApp()`: that needs Azurite, which the CI `check`
- * job only has for the integration step, and the legacy parity contract is
- * about response bytes and headers — nothing storage decides. Everything that
+ * job only has for the integration step, and the contract tests are
+ * about response bodies and headers — nothing storage decides. Everything that
  * shapes a response (route handlers, `config/*.sample.*` parsing, the
  * SpaceAPI builder, Fastify's serializer) is the production code path.
  */
@@ -35,19 +37,19 @@ export async function buildContractApp(): Promise<ContractApp> {
   // pollIntervalMs 0 disables the reload timer: the sample files never change
   // under a test run, and a live timer would keep the process awake.
   const spaceApiStore = await ConfigStore.create(
-    createConfigSource("file://./config/spaceapi.sample.json"),
+    createConfigSource("file://./config/spaceapi.sample.yaml"),
     yamlParser(spaceApiConfigSchema),
-    0,
+    { pollIntervalMs: 0 },
   );
   const apiKeyStore = await ConfigStore.create(
     createConfigSource("file://./config/api-keys.sample.yaml"),
     yamlParser(apiKeysConfigSchema),
-    0,
+    { pollIntervalMs: 0 },
   );
   const legacyStore = await ConfigStore.create(
     createConfigSource("file://./config/legacy.sample.yaml"),
     yamlParser(legacyConfigSchema),
-    0,
+    { pollIntervalMs: 0 },
   );
 
   const currentStateStore = new InMemoryCurrentStateStore();
@@ -61,12 +63,14 @@ export async function buildContractApp(): Promise<ContractApp> {
   await app.register(legacyPlugin, { spaceApiStore, legacyStore, stateService });
   await app.ready();
 
+  const changedAt = "2026-10-20T13:03:35.000Z";
   return {
     app,
+    changedAt,
     seedState(state) {
       currentStateStore.snapshot = {
         state,
-        changedAt: "2026-10-20T13:03:35.000Z",
+        changedAt,
         changedBy: "contract-test",
         method: "Manual Switch",
         source: "legacy",

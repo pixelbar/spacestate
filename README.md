@@ -54,15 +54,39 @@ Or run the whole thing containerized: `docker compose up --build`.
 
 ```sh
 just test-unit         # pure domain/config logic, no I/O
-just test-contract     # outputs vs the recorded legacy fixtures, no I/O
+just test-contract     # legacy parity + SpaceAPI schema contract, no I/O
+just check-spaceapi    # validate config/spaceapi.sample.yaml (or a file you name) per SpaceAPI version
 docker compose up -d azurite
 just test-integration  # exercises both the new API and the legacy adapter
 ```
 
 `just test-contract` is the evidence that the cutover is safe: it compares
-this service's SpaceAPI document, `/spacestate.php` body and toggle replies
-against golden fixtures recorded from the live PHP system, and
+this service's `/spacestate.php` body and toggle replies against golden
+fixtures recorded from the live PHP system, and checks every SpaceAPI address
+against the official schema of the version it serves.
 `test/contract/README.md` lists every difference that is there on purpose.
+
+## SpaceAPI versions
+
+The [SpaceAPI](https://spaceapi.io/) document is served in every version the
+service supports, 0.13, 14 and 15 (`SPACEAPI_VERSIONS` in
+`src/domain/spaceapi/versions.ts`):
+
+| Address | Serves |
+| --- | --- |
+| `/`, `/index.php`, `/api/v1/spaceapi` | The latest version (15). `https://spaceapi.pixelbar.nl/` is what the [SpaceAPI directory](https://directory.spaceapi.io/) lists. |
+| `/api/v1/spaceapi/{13,14,15}` | That version (`0.13` works too). |
+| `/spaceapi/{13,14,15}.json` | The same, as short addresses. |
+
+All of them come from one config, `spaceapi.yaml`: a `shared` block that every
+version has, and `versioned` fragments, each tagged with the versions it
+belongs to. Every rendered version is validated against its official schema in
+strict mode, so a field in the wrong version fails `just edit spaceapi`
+instead of reaching prod. The
+[Maintainers page](https://pixelbar.nl/spacestate/maintainers/spaceapi) explains
+how to edit it; `just check-spaceapi config/prod/spaceapi.yaml --print 15`
+shows what an endpoint would serve. A PR that touches the config or the
+SpaceAPI code also runs the **SpaceAPI schema** workflow.
 
 ## Deploying
 
@@ -109,9 +133,10 @@ terraform init -migrate-state -backend-config=backend.azurerm.hcl
 The app reads its config from blobs rather than a database, each with a
 sample under `config/`:
 
-- `spaceapi.json` — the public SpaceAPI document, exactly as served, minus
-  the live fields (`open`, `state.open`), which come from current state
-  (`config/spaceapi.sample.json`)
+- `spaceapi.yaml` — the public SpaceAPI document for every version, minus the
+  live fields (`api`/`api_compatibility`, `state.open`, `state.lastchange`),
+  which the service fills in (`config/spaceapi.sample.yaml`; see "SpaceAPI
+  versions")
 - `api-keys.yaml` — API keys for the `/api/v1` endpoints (`config/api-keys.sample.yaml`)
 - `legacy.yaml` — legacy device credentials (`config/legacy.sample.yaml`)
 - `notifications.yaml` — where state changes are announced, and the
@@ -131,7 +156,7 @@ Every command below passes `--auth-mode login`.
 After the first `apply`, upload real ones:
 
 ```sh
-for f in spaceapi.json api-keys.yaml legacy.yaml; do
+for f in spaceapi.yaml api-keys.yaml legacy.yaml; do
   az storage blob upload \
     --account-name <storage_account_name output> \
     --container-name config \
@@ -360,7 +385,7 @@ deploy without error reporting on purpose, say so explicitly with
 no `SENTRY_DSN` on the container) and the `sentry_enabled` output reads `false`.
 
 There is no Key Vault in this stack, and `just pull`/`push`/`edit` only move the
-three config blobs (`spaceapi.json`, `api-keys.yaml`, `legacy.yaml`), so
+three config blobs (`spaceapi.yaml`, `api-keys.yaml`, `legacy.yaml`), so
 Terraform is the one place the DSN lives. Rotating it is an `apply`. The
 credentials in the config blobs don't need a vault either: the app has to read
 them and the operators have to edit them, and with account keys disabled a
@@ -589,7 +614,7 @@ use the samples: their keys are public.
 ```sh
 echo "SPACESTATE_DEV_STORAGE_ACCOUNT=$(just tf-dev output -raw storage_account_name)" >> .env
 mkdir -p config/dev
-cp config/spaceapi.sample.json config/dev/spaceapi.json
+cp config/spaceapi.sample.yaml config/dev/spaceapi.yaml
 just api-key tester --role write > config/dev/api-keys.yaml
 echo 'legacyDevices: []' > config/dev/legacy.yaml
 just push --env dev

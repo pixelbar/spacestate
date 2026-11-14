@@ -28,7 +28,7 @@ type Env = keyof typeof ENVS;
 
 // `container` overrides the --container default ("config") for documents that live elsewhere.
 const CONFIGS: Record<string, { blob: string; schema: ZodType; container?: string }> = {
-  spaceapi: { blob: "spaceapi.json", schema: spaceApiConfigSchema },
+  spaceapi: { blob: "spaceapi.yaml", schema: spaceApiConfigSchema },
   "api-keys": { blob: "api-keys.yaml", schema: apiKeysConfigSchema },
   legacy: { blob: "legacy.yaml", schema: legacyConfigSchema },
   notifications: { blob: "notifications.yaml", schema: notificationsConfigSchema },

@@ -21,9 +21,17 @@ build:
 test-unit:
     npm run test:unit
 
-# Legacy parity: outputs vs the recorded legacy fixtures (see test/contract/README.md).
+# Legacy parity and the SpaceAPI schema contract (see test/contract/README.md).
 test-contract:
     npm run test:contract
+
+# Only the SpaceAPI tests: config merge rules, builder, and every endpoint vs the official schemas.
+test-spaceapi:
+    npm run test:spaceapi
+
+# Validate spaceapi.yaml file(s) against the SpaceAPI schemas, e.g. `just check-spaceapi config/prod/spaceapi.yaml --print 15`.
+check-spaceapi *args:
+    npm run --silent check-spaceapi -- {{args}}
 
 # Needs Azurite on :10002 (`just azurite`).
 test-integration:
