@@ -30,7 +30,7 @@ resource "azurerm_container_app" "spacestate" {
 
       env {
         name  = "SPACEAPI_CONFIG_SOURCE"
-        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/spaceapi.json"
+        value = "blob://${azurerm_storage_account.spacestate.name}/${azurerm_storage_container.config.name}/spaceapi.yaml"
       }
 
       env {

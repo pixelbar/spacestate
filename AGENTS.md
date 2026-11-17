@@ -159,12 +159,13 @@ endpoints send `Access-Control-Allow-Origin: *` and work; `POST /api/v1/state`
 does not set CORS headers, so trying it from the docs page fails in the
 browser. Curl and the code samples are unaffected.
 
-## Legacy parity contract tests
+## Contract tests
 
-`just test-contract` proves this service's outputs still match the legacy PHP
-system's. `test/contract/README.md` is the reference: what "identical" means
-per endpoint, which headers must match, and every difference that is there on
-purpose. Three things are easy to get wrong:
+`just test-contract` proves two things, both described in
+`test/contract/README.md`: `/spacestate.php` and the toggle endpoints still
+match the legacy PHP system's outputs, and every SpaceAPI address serves a
+document that holds to the official schema of the version it claims. Things
+that are easy to get wrong:
 
 - **Never call `togglestate.php` or `togglebaker.php` on a live host**, with
   or without a token. They change the real space status. Only the read
@@ -172,10 +173,17 @@ purpose. Three things are easy to get wrong:
 - **The fixtures under `test/fixtures/legacy/` have no trailing newline**,
   because PHP's `echo` emitted none and `/spacestate.php` is compared
   byte-for-byte. An editor that adds one fails the suite.
-- **Editing `config/spaceapi.sample.json` (or the production blob) can break
-  the parity tests**, which is the point — the SpaceAPI document is config
-  plus two live booleans, so a config edit is a change to the public output.
-  Re-run `just test-contract` after touching it.
+- **The SpaceAPI document is no longer held to the legacy PHP output.** It is
+  served per version (0.13, 14, 15) from `config/spaceapi.sample.yaml` and the
+  production blob, and each version is validated against its official schema
+  in strict mode: a key that version doesn't define fails, unless it is
+  `ext_*`. A config edit is a change to the public output; run `just
+  check-spaceapi` after touching it (CI's SpaceAPI schema workflow does too).
+- **The official schemas are vendored** in `src/domain/spaceapi/schemas/`,
+  verbatim from [SpaceApi/schema](https://github.com/SpaceApi/schema) at the
+  commit named in `versions.ts`. Don't edit them to make a document pass. A new
+  SpaceAPI version is a new file there plus an entry in `SPACEAPI_VERSIONS`;
+  the last entry is what `/` serves.
 
 Every intentional difference in that README is backed by an assertion, so the
 list cannot quietly go stale: if a difference disappears, a test fails and the

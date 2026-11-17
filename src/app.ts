@@ -40,7 +40,7 @@ export interface BuiltApp {
 
 export async function buildApp(): Promise<BuiltApp> {
   const spaceApiStore = await ConfigStore.create(
-    createConfigSource(process.env.SPACEAPI_CONFIG_SOURCE ?? "file://./config/spaceapi.sample.json"),
+    createConfigSource(process.env.SPACEAPI_CONFIG_SOURCE ?? "file://./config/spaceapi.sample.yaml"),
     yamlParser(spaceApiConfigSchema),
   );
   const apiKeyStore = await ConfigStore.create(

@@ -11,7 +11,10 @@ const sidebar = useSidebar({ spec, linkPrefix: "/operations/" });
 const maintainersSidebar = [
   {
     text: "Maintainers",
-    items: [{ text: "Overview", link: "/maintainers/" }],
+    items: [
+      { text: "Overview", link: "/maintainers/" },
+      { text: "SpaceAPI document", link: "/maintainers/spaceapi" },
+    ],
   },
   {
     text: "Notifications",

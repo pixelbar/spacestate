@@ -9,7 +9,7 @@ services:
     build: .
     environment:
       PORT: "3000"
-      SPACEAPI_CONFIG_SOURCE: "file:///app/config/spaceapi.sample.json"
+      SPACEAPI_CONFIG_SOURCE: "file:///app/config/spaceapi.sample.yaml"
       API_KEYS_CONFIG_SOURCE: "file:///app/config/api-keys.sample.yaml"
       LEGACY_CONFIG_SOURCE: "file:///app/config/legacy.sample.yaml"
       NOTIFICATIONS_CONFIG_SOURCE: "file:///app/config/notifications.sample.yaml"

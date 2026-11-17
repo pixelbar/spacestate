@@ -1,0 +1,82 @@
+# The public SpaceAPI document, for every version served (0.13, 14, 15).
+#
+# `shared` is what every version has. Each `versioned` entry adds what only the
+# versions it lists have; it is deep-merged into `shared` for those versions.
+# A key has one home per version: setting it in two places is an error.
+#
+# Each rendered version is checked against its official schema, strictly: a key
+# that version doesn't define fails, unless it is named ext_*. So is setting a
+# field the service fills in: api / api_compatibility, state.open,
+# state.lastchange.
+#
+# Check an edit with `just check-spaceapi <file>`; `just edit spaceapi` does it
+# for you. Docs: https://pixelbar.nl/spacestate/maintainers/spaceapi
+
+shared:
+  space: Pixelbar
+  logo: https://www.pixelbar.nl/public/logo.png
+  url: https://pixelbar.nl
+  location:
+    address: Unit K14.1.01, Schiemond 20, 3024 EE Rotterdam
+    lat: 51.903083
+    lon: 4.449638
+  contact:
+    email: bestuur@pixelbar.nl
+    irc: "irc://irc.smurfnet.ch/#pixelbar"
+    ml: pixelbar@lists.pixelbar.nl
+    twitter: "@pixelbar010"
+    ext_discord: https://discord.gg/b4Dcx8f
+    keymasters:
+      - { irc_nick: nosfaratuss, name: nosfaratuss }
+      - { irc_nick: teq, name: teq }
+      - { irc_nick: tucje, name: tucje }
+  spacefed:
+    spacenet: true
+    spacesaml: false
+  state:
+    icon:
+      open: https://www.pixelbar.nl/public/logo.png
+      closed: https://www.pixelbar.nl/public/logo.png
+  projects:
+    - https://github.com/pixelbar/
+
+versioned:
+  # Required in 0.13, removed in 14.
+  - versions: ["0.13"]
+    issue_report_channels: [email]
+    spacefed:
+      spacephone: false
+    contact:
+      ext_mastodon: "@pixelbar@hsnl.social" # contact.mastodon is 14+
+
+  - versions: ["14", "15"]
+    contact:
+      mastodon: "@pixelbar@hsnl.social"
+    location:
+      timezone: Europe/Amsterdam
+    links:
+      - name: Wiki
+        url: https://wiki.pixelbar.nl/index.php/Main_Page
+      - name: Discord
+        url: https://discord.gg/b4Dcx8f
+      - name: GitHub
+        url: https://github.com/pixelbar
+    membership_plans:
+      - name: Member
+        value: 32.5
+        currency: EUR
+        billing_interval: monthly
+        description: >-
+          Paid by periodic bank transfer; you are welcome to pay more. See
+          https://pixelbar.nl/becomingamember/
+      - name: Friend
+        value: 5
+        currency: EUR
+        billing_interval: monthly
+        description: >-
+          Or EUR 60 per year. Irregular access to the space, no 24/7 key. See
+          https://pixelbar.nl/becomingamember/
+
+  - versions: ["15"]
+    location:
+      country_code: NL

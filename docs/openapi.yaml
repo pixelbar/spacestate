@@ -5,8 +5,10 @@ info:
   description: |
     SpaceAPI document and open/closed state for Pixelbar.
 
-    The `/api/v1` endpoints are the supported API. The **legacy** endpoints
-    (`/`, `/index.php`, `/spacestate.php`, `/togglestate.php`, `/togglebaker.php`)
+    The `/api/v1` endpoints are the supported API, along with the SpaceAPI
+    document's short addresses (`/`, `/spaceapi/{version}.json`). The
+    **legacy** endpoints (`/index.php`, `/spacestate.php`, `/togglestate.php`,
+    `/togglebaker.php`)
     are a temporary compatibility shim for hardware and consumers that have not
     migrated; do not build new integrations on them.
 
@@ -74,9 +76,21 @@ tags:
   - name: History
     description: Every past open/close, newest first, as a paged list.
   - name: SpaceAPI
-    description: >-
-      The space's SpaceAPI document — the shared format hackerspace status
-      tools read to show whether we're open.
+    description: |
+      The space's [SpaceAPI](https://spaceapi.io/) document — the shared
+      format hackerspace status tools read to show whether we're open.
+
+      It is served in every version we support: **0.13**, **14** and **15**.
+      `/`, `/api/v1/spaceapi` (and the legacy `/index.php`) serve the latest,
+      15; `/api/v1/spaceapi/{version}` and `/spaceapi/{version}.json` serve the
+      version you name. Each document claims exactly one version — `api:
+      "0.13"`, or `api_compatibility: ["14"]` / `["15"]` — and is valid against
+      that version's [official schema](https://github.com/SpaceApi/schema).
+      `state.open` and `state.lastchange` are live; everything else is
+      configuration.
+
+      All SpaceAPI responses send `Access-Control-Allow-Origin: *` and
+      `Cache-Control: no-cache`.
   - name: Webhooks
     description: |
       Register a URL to be told when the space opens or closes, instead of
@@ -217,20 +231,88 @@ paths:
   /api/v1/spaceapi:
     get:
       tags: [SpaceAPI]
-      summary: SpaceAPI 0.13 document
+      summary: SpaceAPI document (latest version)
       description: |
-        The configured SpaceAPI document with the live `open` / `state.open`
-        fields filled in from current state. See https://spaceapi.io/docs/.
+        The SpaceAPI document in the latest version we serve, 15. The same
+        document is at `/` and `/api/v1/spaceapi/15`; pin a version with
+        those if a later one would break you.
       operationId: getSpaceApi
       responses:
         "200":
-          description: SpaceAPI document.
+          description: SpaceAPI 15 document.
           headers:
             Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
             Cache-Control: { schema: { type: string, const: no-cache } }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+              schema: { $ref: "#/components/schemas/SpaceApiDocument15" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/spaceapi/{version}:
+    get:
+      tags: [SpaceAPI]
+      summary: SpaceAPI document in a given version
+      description: |
+        The SpaceAPI document in the version you name: `13` (or `0.13`), `14`
+        or `15`. Any other version is a `404`.
+      operationId: getSpaceApiVersion
+      parameters:
+        - $ref: "#/components/parameters/SpaceApiVersion"
+      responses:
+        "200":
+          description: SpaceAPI document in the requested version.
+          headers:
+            Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
+            Cache-Control: { schema: { type: string, const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocumentAnyVersion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /spaceapi/{file}:
+    get:
+      tags: [SpaceAPI]
+      summary: SpaceAPI document in a given version (short address)
+      description: |
+        Same as `/api/v1/spaceapi/{version}`, as a file-like address:
+        `/spaceapi/13.json`, `/spaceapi/14.json`, `/spaceapi/15.json`.
+      operationId: getSpaceApiFile
+      parameters:
+        - in: path
+          name: file
+          required: true
+          schema: { type: string, enum: [13.json, 14.json, 15.json], examples: [15.json] }
+      responses:
+        "200":
+          description: SpaceAPI document in the requested version.
+          headers:
+            Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
+            Cache-Control: { schema: { type: string, const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocumentAnyVersion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /:
+    get:
+      tags: [SpaceAPI]
+      summary: SpaceAPI document (directory address)
+      description: |
+        Same response as `/api/v1/spaceapi`: the latest version. This is the
+        address the [SpaceAPI directory](https://directory.spaceapi.io/)
+        lists for Pixelbar (`https://spaceapi.pixelbar.nl/`).
+      operationId: getSpaceApiRoot
+      responses:
+        "200":
+          description: SpaceAPI 15 document.
+          headers:
+            Access-Control-Allow-Origin: { schema: { type: string, const: "*" } }
+            Cache-Control: { schema: { type: string, const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceApiDocument15" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/v1/webhooks:
@@ -356,32 +438,22 @@ paths:
                 properties:
                   status: { type: string, const: ok }
 
-  /:
-    get:
-      tags: [Legacy]
-      deprecated: true
-      summary: SpaceAPI document (legacy address)
-      description: Same response as `/api/v1/spaceapi`; the old public address of the document.
-      operationId: legacySpaceApiRoot
-      responses:
-        "200":
-          description: SpaceAPI document.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
   /index.php:
     get:
       tags: [Legacy]
       deprecated: true
       summary: SpaceAPI document (legacy address)
-      description: Same response as `/api/v1/spaceapi`.
+      description: >-
+        Same response as `/api/v1/spaceapi`: the latest version. It served
+        0.13 until versioning; a consumer that still needs 0.13 reads
+        `/api/v1/spaceapi/13`.
       operationId: legacySpaceApiIndex
       responses:
         "200":
-          description: SpaceAPI document.
+          description: SpaceAPI 15 document.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SpaceApiDocument" }
+              schema: { $ref: "#/components/schemas/SpaceApiDocument15" }
   /spacestate.php:
     get:
       tags: [Legacy]
@@ -598,6 +670,13 @@ components:
         A per-device token issued by the Pixelbar board, accepted only from
         that device's registered IP address. Failures redirect to
         https://www.pixelbar.nl/ instead of returning 401.
+  parameters:
+    SpaceApiVersion:
+      in: path
+      name: version
+      required: true
+      description: The SpaceAPI version. `0.13` and `13` are the same.
+      schema: { type: string, enum: ["13", "0.13", "14", "15"], examples: ["15"] }
   responses:
     Unauthorized:
       description: Missing, unknown, or insufficiently privileged API key.
@@ -608,6 +687,15 @@ components:
             required: [error]
             properties:
               error: { type: string, const: unauthorized }
+    NotFound:
+      description: No such resource.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string, const: not_found }
     InternalError:
       description: Unexpected server error.
       content:
@@ -768,23 +856,139 @@ components:
           type: array
           description: Zod issues.
           items: { type: object, additionalProperties: true }
-    SpaceApiDocument:
+    SpaceApiDocument13:
       type: object
       description: |
-        SpaceAPI 0.13 document (https://spaceapi.io/docs/). Content comes from
-        the `spaceapi.json` config; `open` and `state.open` are live.
-      required: [api, space, url, location, state, contact]
+        A [SpaceAPI 0.13](https://github.com/SpaceApi/schema/blob/master/13.json)
+        document. `api`, `state.open` and `state.lastchange` are filled in by
+        the service; the rest is configuration. Only the main fields are
+        listed here; the official schema is the reference.
+      required: [api, space, logo, url, location, state, contact, issue_report_channels]
       additionalProperties: true
       properties:
-        api: { type: string, example: "0.13" }
+        api: { type: string, const: "0.13" }
         space: { type: string, examples: [Pixelbar] }
-        url: { type: string, format: uri, examples: ["https://pixelbar.nl"] }
-        logo: { type: string, format: uri }
-        location: { type: object, additionalProperties: true }
-        contact: { type: object, additionalProperties: true }
-        state:
+        logo: { type: string, examples: ["https://www.pixelbar.nl/public/logo.png"] }
+        url: { type: string, examples: ["https://pixelbar.nl"] }
+        location: { $ref: "#/components/schemas/SpaceApiLocation" }
+        contact: { $ref: "#/components/schemas/SpaceApiContact" }
+        spacefed:
           type: object
-          additionalProperties: true
           properties:
-            open: { type: boolean }
-            lastchange: { type: integer, description: Unix timestamp. }
+            spacenet: { type: boolean, examples: [true] }
+            spacesaml: { type: boolean, examples: [false] }
+            spacephone: { type: boolean, examples: [false] }
+        state: { $ref: "#/components/schemas/SpaceApiState" }
+        issue_report_channels: { type: array, items: { type: string }, examples: [[email]] }
+        projects: { type: array, items: { type: string }, examples: [["https://github.com/pixelbar/"]] }
+    SpaceApiDocument14:
+      type: object
+      description: |
+        A [SpaceAPI 14](https://github.com/SpaceApi/schema/blob/master/14.json)
+        document. `api_compatibility`, `state.open` and `state.lastchange` are
+        filled in by the service; the rest is configuration. Only the main
+        fields are listed here; the official schema is the reference.
+      required: [api_compatibility, space, logo, url, location, contact]
+      additionalProperties: true
+      properties:
+        api_compatibility: { type: array, items: { type: string }, examples: [["14"]] }
+        space: { type: string, examples: [Pixelbar] }
+        logo: { type: string, examples: ["https://www.pixelbar.nl/public/logo.png"] }
+        url: { type: string, examples: ["https://pixelbar.nl"] }
+        location: { $ref: "#/components/schemas/SpaceApiLocation" }
+        contact: { $ref: "#/components/schemas/SpaceApiContact" }
+        spacefed: { $ref: "#/components/schemas/SpaceApiSpacefed" }
+        state: { $ref: "#/components/schemas/SpaceApiState" }
+        projects: { type: array, items: { type: string }, examples: [["https://github.com/pixelbar/"]] }
+        links: { type: array, items: { $ref: "#/components/schemas/SpaceApiLink" } }
+        membership_plans: { type: array, items: { $ref: "#/components/schemas/SpaceApiMembershipPlan" } }
+    SpaceApiDocument15:
+      type: object
+      description: |
+        A [SpaceAPI 15](https://github.com/SpaceApi/schema/blob/master/15.json)
+        document, the latest version. `api_compatibility`, `state.open` and
+        `state.lastchange` are filled in by the service; the rest is
+        configuration. Only the main fields are listed here; the official
+        schema is the reference.
+      required: [api_compatibility, space, logo, url, contact]
+      additionalProperties: true
+      properties:
+        api_compatibility: { type: array, items: { type: string }, examples: [["15"]] }
+        space: { type: string, examples: [Pixelbar] }
+        logo: { type: string, examples: ["https://www.pixelbar.nl/public/logo.png"] }
+        url: { type: string, examples: ["https://pixelbar.nl"] }
+        location:
+          allOf:
+            - $ref: "#/components/schemas/SpaceApiLocation"
+          properties:
+            country_code: { type: string, description: ISO 3166 alpha-2., examples: [NL] }
+        contact: { $ref: "#/components/schemas/SpaceApiContact" }
+        spacefed: { $ref: "#/components/schemas/SpaceApiSpacefed" }
+        state: { $ref: "#/components/schemas/SpaceApiState" }
+        projects: { type: array, items: { type: string }, examples: [["https://github.com/pixelbar/"]] }
+        links: { type: array, items: { $ref: "#/components/schemas/SpaceApiLink" } }
+        membership_plans: { type: array, items: { $ref: "#/components/schemas/SpaceApiMembershipPlan" } }
+    SpaceApiDocumentAnyVersion:
+      description: The document in the requested version.
+      anyOf:
+        - $ref: "#/components/schemas/SpaceApiDocument13"
+        - $ref: "#/components/schemas/SpaceApiDocument14"
+        - $ref: "#/components/schemas/SpaceApiDocument15"
+    SpaceApiLocation:
+      type: object
+      additionalProperties: true
+      properties:
+        address: { type: string, examples: ["Unit K14.1.01, Schiemond 20, 3024 EE Rotterdam"] }
+        lat: { type: number, examples: [51.903083] }
+        lon: { type: number, examples: [4.449638] }
+        timezone: { type: string, description: 14 and later., examples: [Europe/Amsterdam] }
+    SpaceApiContact:
+      type: object
+      additionalProperties: true
+      description: >-
+        Contact details. Keys outside the version's schema are prefixed
+        `ext_`, e.g. `ext_discord` (and `ext_mastodon` in 0.13, which predates
+        `mastodon`).
+      properties:
+        email: { type: string, examples: [bestuur@pixelbar.nl] }
+        irc: { type: string, examples: ["irc://irc.smurfnet.ch/#pixelbar"] }
+        ml: { type: string, examples: [pixelbar@lists.pixelbar.nl] }
+        twitter: { type: string, examples: ["@pixelbar010"] }
+        mastodon: { type: string, description: 14 and later., examples: ["@pixelbar@hsnl.social"] }
+        ext_discord: { type: string, examples: ["https://discord.gg/b4Dcx8f"] }
+    SpaceApiSpacefed:
+      type: object
+      properties:
+        spacenet: { type: boolean, examples: [true] }
+        spacesaml: { type: boolean, examples: [false] }
+    SpaceApiState:
+      type: object
+      required: [open]
+      additionalProperties: true
+      properties:
+        open: { type: boolean, description: Live. }
+        lastchange:
+          type: integer
+          description: >-
+            Live: unix seconds of the last open/close. Absent until a state
+            has been recorded.
+          examples: [1794650400]
+    SpaceApiLink:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string, examples: [Wiki] }
+        url: { type: string, examples: ["https://wiki.pixelbar.nl/index.php/Main_Page"] }
+        description: { type: string }
+    SpaceApiMembershipPlan:
+      type: object
+      required: [name, value, currency, billing_interval]
+      properties:
+        name: { type: string, examples: [Member] }
+        value: { type: number, examples: [32.5] }
+        currency: { type: string, examples: [EUR] }
+        billing_interval:
+          type: string
+          enum: [yearly, quarterly, monthly, weekly, daily, hourly, other]
+          examples: [monthly]
+        description: { type: string }

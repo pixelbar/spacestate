@@ -16,7 +16,6 @@ export interface LegacyEndpointRecording {
 export interface LegacyRecording {
   recordedAt: string;
   endpoints: {
-    spaceapi: LegacyEndpointRecording;
     spacestate: LegacyEndpointRecording;
     togglestate: LegacyEndpointRecording;
   };
@@ -31,7 +30,7 @@ export const legacyRecording = JSON.parse(
  * newline, PHP's `\/` escaping intact. Read as a string, not parsed, so
  * byte-level comparisons are possible.
  */
-export function legacyBody(endpoint: "spaceapi" | "spacestate", state: "open" | "closed"): string {
+export function legacyBody(endpoint: "spacestate", state: "open" | "closed"): string {
   const bodies = legacyRecording.endpoints[endpoint].bodies;
   if (!bodies?.[state]) throw new Error(`No ${state} body recorded for ${endpoint}`);
   return readFileSync(join(FIXTURE_DIR, bodies[state]), "utf8");

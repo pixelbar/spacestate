@@ -63,8 +63,14 @@ describe("new API", () => {
     expect(history.json().items[0]).toMatchObject({ state: "open", user: "alice", source: "api" });
   });
 
-  it("GET /api/v1/spaceapi returns a SpaceAPI document", async () => {
+  it("GET /api/v1/spaceapi returns the latest SpaceAPI document", async () => {
     const response = await app.inject({ method: "GET", url: "/api/v1/spaceapi" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().api_compatibility).toEqual(["15"]);
+  });
+
+  it("GET /api/v1/spaceapi/13 returns the 0.13 document", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/v1/spaceapi/13" });
     expect(response.statusCode).toBe(200);
     expect(response.json().api).toBe("0.13");
   });

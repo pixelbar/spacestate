@@ -1,0 +1,64 @@
+name: SpaceAPI schema
+
+# The SpaceAPI document is config: editing spaceapi.yaml changes the public
+# output of every version. This checks that each version still renders and
+# still holds to its official schema, on the PRs that can change that. See
+# "SpaceAPI schema contract" in test/contract/README.md.
+
+on:
+  pull_request:
+    paths:
+      - "config/spaceapi*.yaml"
+      - "src/domain/spaceapi/**"
+      - "src/config/**"
+      - "src/api/routes/spaceapi.ts"
+      - "src/legacy/routes/spaceapi.ts"
+      - "test/contract/spaceapi-schema.contract.test.ts"
+      - "test/unit/spaceapi-*.test.ts"
+      - "test/helpers/buildContractApp.ts"
+      - "scripts/check-spaceapi.ts"
+      - "package-lock.json"
+      - ".github/workflows/spaceapi.yml"
+  push:
+    branches: [main]
+    paths:
+      - "config/spaceapi*.yaml"
+      - "src/domain/spaceapi/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spaceapi-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned to commit SHAs (with the version in a comment), as in ci.yml.
+
+jobs:
+  contract:
+    name: SpaceAPI output vs official schemas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: just install
+
+      # Every spaceapi*.yaml in config/, each version, open and closed,
+      # against the published schema and the strict one.
+      - name: Validate the config
+        run: just check-spaceapi config/spaceapi*.yaml
+
+      # Every address that serves a document, through the real routes.
+      - name: Endpoint contract tests
+        run: just test-spaceapi

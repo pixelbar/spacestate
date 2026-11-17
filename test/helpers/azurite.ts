@@ -11,7 +11,7 @@ export const AZURITE_CONNECTION_STRING =
 
 export function applyAzuriteEnv(): void {
   process.env.AZURE_STORAGE_CONNECTION_STRING ??= AZURITE_CONNECTION_STRING;
-  process.env.SPACEAPI_CONFIG_SOURCE ??= "file://./config/spaceapi.sample.json";
+  process.env.SPACEAPI_CONFIG_SOURCE ??= "file://./config/spaceapi.sample.yaml";
   process.env.API_KEYS_CONFIG_SOURCE ??= "file://./config/api-keys.sample.yaml";
   process.env.LEGACY_CONFIG_SOURCE ??= "file://./config/legacy.sample.yaml";
   process.env.NOTIFICATIONS_CONFIG_SOURCE ??= "file://./config/notifications.sample.yaml";

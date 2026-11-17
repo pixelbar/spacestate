@@ -2,29 +2,9 @@
   "$comment": "Golden recording of the legacy PHP system's READ endpoints. See test/contract/README.md. Body fixtures are stored byte-exact, with no trailing newline.",
   "recordedAt": "2026-10-20T13:04:00Z",
   "legacySources": {
-    "spaceapi": "https://github.com/pixelbar/SpaceApiScripts (index.php)",
     "spacestate": "https://github.com/pixelbar/SpaceStateScripts (spacestate.php, togglestate.php, togglebaker.php)"
   },
   "endpoints": {
-    "spaceapi": {
-      "url": "https://spaceapi.pixelbar.nl/index.php",
-      "method": "GET",
-      "status": 200,
-      "headers": {
-        "content-type": "application/json",
-        "cache-control": "no-cache",
-        "access-control-allow-origin": "*"
-      },
-      "bodies": {
-        "closed": "spaceapi-closed.json",
-        "open": "spaceapi-open.json"
-      },
-      "notes": {
-        "closed": "Recorded verbatim from the live endpoint; the space was closed at the time.",
-        "open": "Derived, not recorded: the space was closed for the whole recording window. SpaceApiScripts/index.php builds the document from hard-coded values plus one dynamic input (the `state` field of spacestate.php), and sets both `open` and `state.open` to the same boolean, so the open document is the recorded one with `\"open\":false` -> `\"open\":true` in both places and nothing else changed."
-      },
-      "serverHeadersOmitted": "The live host adds Apache/Pixelbar headers (server, x-frame-options, content-security-policy, x-content-type-options, referrer-policy, x-xss-protection, host) that belong to the old web server, not to the endpoint's contract. They are deliberately not part of this recording."
-    },
     "spacestate": {
       "url": "https://spacestate.pixelbar.nl/spacestate.php",
       "method": "GET",

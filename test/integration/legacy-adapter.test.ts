@@ -24,13 +24,13 @@ describe("legacy adapter", () => {
     expect(response.json()).toEqual({ state: "closed" });
   });
 
-  it("serves the SpaceAPI document at both legacy paths with matching content", async () => {
+  it("serves the same SpaceAPI document at / and the legacy /index.php", async () => {
     const atRoot = await app.inject({ method: "GET", url: "/" });
     const atIndexPhp = await app.inject({ method: "GET", url: "/index.php" });
 
     expect(atRoot.statusCode).toBe(200);
     expect(atRoot.json()).toEqual(atIndexPhp.json());
-    expect(atRoot.json().api).toBe("0.13");
+    expect(atRoot.json().api_compatibility).toEqual(["15"]);
     expect(atRoot.json().space).toBe("Pixelbar");
   });
 
